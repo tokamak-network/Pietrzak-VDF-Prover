@@ -25,15 +25,15 @@ func ModHash(strings []string, n int64) *big.Int {
 	return r
 }
 
-func CalExp(n, g *big.Int, T int) (*big.Int, []*big.Int) {
+func CalExp(N, x *big.Int, T int) (*big.Int, []*big.Int) {
 	startTime := time.Now()
 
 	expList := make([]*big.Int, T+1)
-	expList[0] = new(big.Int).Set(g)
-	result := new(big.Int).Set(g)
+	expList[0] = new(big.Int).Set(x)
+	result := new(big.Int).Set(x)
 
 	for i := 1; i <= T; i++ {
-		result.Mul(result, result).Mod(result, n)
+		result.Mul(result, result).Mod(result, N)
 		expList[i] = new(big.Int).Set(result)
 	}
 
