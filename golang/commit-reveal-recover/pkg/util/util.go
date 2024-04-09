@@ -15,7 +15,7 @@ func ConstructClaim(N, x, y *big.Int, T int) prover.Claim {
 		THalf = (T + 1) / 2
 	}
 
-	v := prover.CalV(N, x, THalf/2)
+	v := prover.CalV(N, x, THalf)
 
 	return prover.Claim{
 		N: N,

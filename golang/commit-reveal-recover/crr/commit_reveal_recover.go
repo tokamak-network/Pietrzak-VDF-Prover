@@ -7,9 +7,11 @@ import (
 	"github.com/tokamak-network/Pietrzak-VDF-Prover/golang/vdf-prover/pkg/util"
 	prover "github.com/tokamak-network/Pietrzak-VDF-Prover/golang/vdf-prover/vdf"
 	"math/big"
+	"time"
 )
 
 func Setup(N *big.Int, x *big.Int, T int) (*big.Int, []prover.Claim) {
+	setupEvalTime := time.Now()
 	y, expList := util.CalExp(N, x, T)
 	tHalf := util.CalTHalf(T)
 	v := util.GetExp(expList, new(big.Int).Exp(big.NewInt(2), big.NewInt(int64(tHalf)), nil), N)
@@ -21,7 +23,14 @@ func Setup(N *big.Int, x *big.Int, T int) (*big.Int, []prover.Claim) {
 		T: T,
 		V: v,
 	}
+	setupEvalDuration := time.Since(setupEvalTime)
+	fmt.Println("Setup Eval Time: ", setupEvalDuration)
+
+	setupProofTime := time.Now()
 	setupProofList := prover.RecHalveProof(claim)
+	setupProofDuration := time.Since(setupProofTime)
+	fmt.Println("Setup Proof Time: ", setupProofDuration)
+
 	return y, setupProofList
 }
 
@@ -67,7 +76,21 @@ func Reveal(N *big.Int, y *big.Int, a []*big.Int, c []*big.Int, bStar *big.Int) 
 	return omega
 }
 
+func calExpRecov(N, x *big.Int, T int) *big.Int {
+	expList := make([]*big.Int, T+1)
+	expList[0] = new(big.Int).Set(x)
+	result := new(big.Int).Set(x)
+
+	for i := 1; i <= T; i++ {
+		result.Mul(result, result).Mod(result, N)
+		expList[i] = new(big.Int).Set(result)
+	}
+
+	return result
+}
+
 func Recover(N *big.Int, T int, c []*big.Int, bStar *big.Int) (*big.Int, []prover.Claim) {
+	RecovEvalTime := time.Now()
 	var cHexStrings []string
 	for _, ci := range c {
 		ciHex := fmt.Sprintf("%x", ci)
@@ -89,16 +112,15 @@ func Recover(N *big.Int, T int, c []*big.Int, bStar *big.Int) (*big.Int, []prove
 		recov.Mul(recov, temp).Mod(recov, N)
 	}
 
-	fmt.Println("Revealed Random: ", recov, "\n")
-
-	omegaRecov, expListRecov := util.CalExp(N, recov, T)
-	fmt.Println("omegaRecov: ", omegaRecov, "\n")
-	fmt.Println("expListRecov: ", expListRecov, "\n")
+	omegaRecov := calExpRecov(N, recov, T)
 	claim := crrUtil.ConstructClaim(N, recov, omegaRecov, T)
+	RecovEvalDuration := time.Since(RecovEvalTime)
+	fmt.Println("Recover Eval Time: ", RecovEvalDuration)
 
-	fmt.Println("claim: ", claim, "\n")
-
+	RecovProofTime := time.Now()
 	proofListRecovery := prover.RecHalveProof(claim)
+	RecovProofDuration := time.Since(RecovProofTime)
+	fmt.Println("Recover Proof Time: ", RecovProofDuration)
 
 	return omegaRecov, proofListRecovery
 }
