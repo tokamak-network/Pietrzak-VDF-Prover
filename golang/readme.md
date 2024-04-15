@@ -10,8 +10,6 @@ Additionally, we employ the commit-reveal-recover scheme for secure(https://gith
 - [Installation](#installation)
 - [Running the Simulator](#running-the-simulator)
 - [Performance Goals and Experimental Results](#performance-goals-and-experimental-results)
-- [Contributing](#contributing)
-- [License](#license)
 
 ## Dependencies
 This project is implemented in Go and depends on several external libraries.
