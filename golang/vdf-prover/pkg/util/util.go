@@ -25,20 +25,17 @@ func ModHash(strings []string, n int64) *big.Int {
 	return r
 }
 
-func CalExp(N, x *big.Int, T int) (*big.Int, []*big.Int) {
+func CalExp(N, x *big.Int, T int) *big.Int {
 	startTime := time.Now()
 
-	expList := make([]*big.Int, T+1)
-	expList[0] = new(big.Int).Set(x)
-	result := new(big.Int).Set(x)
+	// Use Lsh directly on a new big.Int initialized to 1
+	expT := new(big.Int).Lsh(big.NewInt(1), uint(T))
 
-	for i := 1; i <= T; i++ {
-		result.Mul(result, result).Mod(result, N)
-		expList[i] = new(big.Int).Set(result)
-	}
+	// Now calculate x^(2^T) mod N
+	result := new(big.Int).Exp(x, expT, N)
 
 	fmt.Printf("CalExp 실행 시간: %s\n", time.Since(startTime))
-	return result, expList
+	return result
 }
 
 func GetExp(expList []*big.Int, exp, N *big.Int) *big.Int {
