@@ -29,7 +29,6 @@ go get -u github.com/tokamak-network/Pietrzak-VDF-Prover
 ```
 
 ## Running the Simulator
-
 The provided Go code includes a `main` function and helper functions to set up the environment, evaluate the VDF, generate proofs, and verify them. Here’s how each part works:
 
 ### Setup Function
@@ -84,8 +83,6 @@ Our goal is to implement a Verifiable Delay Function (VDF) that achieves similar
 Our experiments were conducted using an AMD Ryzen 5600X processor, whereas the experimental results reported in the tokenomics paper were obtained using an Intel Core i7 8th Generation.
 We anticipate that the performance will differ by about 20-25% due to variations in hardware specifications used in different setups. Based on this, we have derived expected results that reflect these differences.
 
-![](/data/Experimental-setup.png)
-
 | Specification | Cores | Threads | CPU-Z Benchmark | Clock Speed |
 | --- | --- | --- | --- | --- |
 | AMD Ryzen 5600X | 6 | 12 | 643 | 4.00 - 4.50 GHz |
@@ -95,12 +92,3 @@ We anticipate that the performance will differ by about 20-25% due to variations
 - [Tokenomics 2nd Conference - Implementation Study of Two Verifiable Delay Functions](https://www.youtube.com/watch?v=uC3j0pCEP7o)
 - [CPU-Z Benchmark for AMD Ryzen 5 5600X (1T) - CPU-Z VALIDATOR](https://valid.x86.fr/bench/rsf5p1/1)
 - [CPU-Z Benchmark for Intel Core i7-8700 (8T) - CPU-Z VALIDATOR](https://valid.x86.fr/bench/d9s89x/8)
-
-### Experimental Results
-The experimental results were obtained after conducting five separate trials. After each trial, the results were compiled and analyzed to derive the final outcomes.
-We plan to increase the number of samples and conduct the tests again to verify the robustness of our findings and further refine our VDF implementation.Experimental Setup Comparision
-
-![](/data/Evaluation-Result.png)
-![](/data/Proof-Result.png)
-![](/data/Evaluation-ExResult.png)
-![](/data/Proof-ExResult.png)
