@@ -22,9 +22,9 @@ func main() {
 	}
 	color.New(color.FgHiGreen, color.Bold).Println("Listener is now active and ready.")
 
-	go listener.SubscribeRandomWordsRequested()
-
+	listener.SubscribeRandomWordsRequested()
 	select {} // Maintain the service running
+
 }
 
 func printLogo() {

@@ -8,6 +8,7 @@ import (
 
 type Config struct {
 	RpcURL          string `json:"RpcURL"`
+	HttpURL         string `json:"HttpURL"`
 	PrivateKey      string `json:"PrivateKey"`
 	ContractAddress string `json:"ContractAddress"`
 	WalletAddress   string `json:"WalletAddress"`

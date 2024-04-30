@@ -1,720 +1,651 @@
 {
   "abi": [
     {
-      "inputs": [],
+      "type": "error",
       "name": "AlreadyCommitted",
-      "type": "error"
+      "inputs": []
     },
     {
-      "inputs": [],
+      "type": "error",
       "name": "AlreadyRevealed",
-      "type": "error"
+      "inputs": []
     },
     {
-      "inputs": [],
+      "type": "error",
       "name": "AlreadyVerified",
-      "type": "error"
+      "inputs": []
     },
     {
-      "inputs": [],
+      "type": "error",
       "name": "BigNumbers__ShouldNotBeZero",
-      "type": "error"
+      "inputs": []
     },
     {
-      "inputs": [],
+      "type": "error",
       "name": "FunctionInvalidAtThisStage",
-      "type": "error"
+      "inputs": []
     },
     {
-      "inputs": [],
+      "type": "error",
       "name": "InvalidProofsLength",
-      "type": "error"
+      "inputs": []
     },
     {
-      "inputs": [],
+      "type": "error",
       "name": "ModExpRevealNotMatchCommit",
-      "type": "error"
+      "inputs": []
     },
     {
-      "inputs": [],
+      "type": "error",
       "name": "NoneParticipated",
-      "type": "error"
+      "inputs": []
     },
     {
-      "inputs": [],
+      "type": "error",
       "name": "NotAllRevealed",
-      "type": "error"
+      "inputs": []
     },
     {
-      "inputs": [],
+      "type": "error",
       "name": "NotCommittedParticipant",
-      "type": "error"
+      "inputs": []
     },
     {
-      "inputs": [],
+      "type": "error",
       "name": "NotStartedRound",
-      "type": "error"
+      "inputs": []
     },
     {
-      "inputs": [],
+      "type": "error",
       "name": "NotVerified",
-      "type": "error"
+      "inputs": []
     },
     {
-      "inputs": [],
+      "type": "error",
       "name": "NotVerifiedAtTOne",
-      "type": "error"
+      "inputs": []
     },
     {
-      "inputs": [],
+      "type": "error",
       "name": "OmegaAlreadyCompleted",
-      "type": "error"
+      "inputs": []
     },
     {
-      "inputs": [],
+      "type": "error",
       "name": "RecovNotMatchX",
-      "type": "error"
+      "inputs": []
     },
     {
-      "inputs": [],
+      "type": "error",
       "name": "ReentrancyGuard",
-      "type": "error"
+      "inputs": []
     },
     {
-      "inputs": [],
+      "type": "error",
       "name": "ShouldNotBeZero",
-      "type": "error"
+      "inputs": []
     },
     {
-      "inputs": [],
+      "type": "error",
       "name": "StillInCommitStage",
-      "type": "error"
+      "inputs": []
     },
     {
-      "inputs": [],
+      "type": "error",
       "name": "TOneNotAtLast",
-      "type": "error"
+      "inputs": []
     },
     {
-      "inputs": [],
+      "type": "error",
       "name": "TwoOrMoreCommittedPleaseRecover",
-      "type": "error"
+      "inputs": []
     },
     {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "index",
-          "type": "uint256"
-        }
-      ],
+      "type": "error",
       "name": "XPrimeNotEqualAtIndex",
-      "type": "error"
-    },
-    {
       "inputs": [
         {
-          "internalType": "uint256",
-          "name": "index",
-          "type": "uint256"
+          "type": "uint256",
+          "name": "index"
         }
-      ],
+      ]
+    },
+    {
+      "type": "error",
       "name": "YPrimeNotEqualAtIndex",
-      "type": "error"
-    },
-    {
-      "anonymous": false,
       "inputs": [
         {
-          "indexed": false,
-          "internalType": "uint256",
-          "name": "round",
-          "type": "uint256"
-        },
-        {
-          "indexed": false,
-          "internalType": "bytes",
-          "name": "omega",
-          "type": "bytes"
+          "type": "uint256",
+          "name": "index"
         }
-      ],
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "CalculateOmega",
-      "type": "event"
-    },
-    {
-      "anonymous": false,
       "inputs": [
         {
-          "indexed": false,
-          "internalType": "uint256",
-          "name": "commitCount",
-          "type": "uint256"
-        },
-        {
-          "indexed": false,
-          "internalType": "bytes",
-          "name": "commitVal",
-          "type": "bytes"
-        }
-      ],
-      "name": "CommitC",
-      "type": "event"
-    },
-    {
-      "anonymous": false,
-      "inputs": [
-        {
-          "indexed": false,
-          "internalType": "uint256",
+          "type": "uint256",
           "name": "round",
-          "type": "uint256"
+          "indexed": false
         },
         {
-          "indexed": false,
-          "internalType": "address",
-          "name": "sender",
-          "type": "address"
-        }
-      ],
-      "name": "RandomWordsRequested",
-      "type": "event"
-    },
-    {
-      "anonymous": false,
-      "inputs": [
-        {
-          "indexed": false,
-          "internalType": "uint256",
-          "name": "round",
-          "type": "uint256"
-        },
-        {
-          "indexed": false,
-          "internalType": "bytes",
-          "name": "recov",
-          "type": "bytes"
-        },
-        {
-          "indexed": false,
-          "internalType": "bytes",
+          "type": "bytes",
           "name": "omega",
-          "type": "bytes"
-        },
-        {
-          "indexed": false,
-          "internalType": "bool",
-          "name": "success",
-          "type": "bool"
+          "indexed": false
         }
-      ],
-      "name": "Recovered",
-      "type": "event"
+      ]
     },
     {
+      "type": "event",
       "anonymous": false,
+      "name": "CommitC",
       "inputs": [
         {
-          "indexed": false,
-          "internalType": "uint256",
-          "name": "revealLeftCount",
-          "type": "uint256"
+          "type": "uint256",
+          "name": "commitCount",
+          "indexed": false
         },
         {
-          "indexed": false,
-          "internalType": "bytes",
-          "name": "aVal",
-          "type": "bytes"
+          "type": "bytes",
+          "name": "commitVal",
+          "indexed": false
         }
-      ],
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RandomWordsRequested",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "round",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "sender",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Recovered",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "round",
+          "indexed": false
+        },
+        {
+          "type": "bytes",
+          "name": "recov",
+          "indexed": false
+        },
+        {
+          "type": "bytes",
+          "name": "omega",
+          "indexed": false
+        },
+        {
+          "type": "bool",
+          "name": "success",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "RevealA",
-      "type": "event"
-    },
-    {
       "inputs": [
         {
-          "internalType": "uint256",
-          "name": "round",
-          "type": "uint256"
+          "type": "uint256",
+          "name": "revealLeftCount",
+          "indexed": false
+        },
+        {
+          "type": "bytes",
+          "name": "aVal",
+          "indexed": false
         }
-      ],
+      ]
+    },
+    {
+      "type": "function",
       "name": "calculateOmega",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
+      "constant": false,
+      "payable": false,
       "inputs": [
         {
-          "internalType": "uint256",
-          "name": "round",
-          "type": "uint256"
-        },
-        {
-          "components": [
-            {
-              "internalType": "bytes",
-              "name": "val",
-              "type": "bytes"
-            },
-            {
-              "internalType": "uint256",
-              "name": "bitlen",
-              "type": "uint256"
-            }
-          ],
-          "internalType": "struct BigNumber",
-          "name": "c",
-          "type": "tuple"
+          "type": "uint256",
+          "name": "round"
         }
       ],
+      "outputs": []
+    },
+    {
+      "type": "function",
       "name": "commit",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
+      "constant": false,
+      "payable": false,
       "inputs": [
         {
-          "internalType": "uint256",
-          "name": "_round",
-          "type": "uint256"
+          "type": "uint256",
+          "name": "round"
         },
         {
-          "internalType": "uint256",
-          "name": "_index",
-          "type": "uint256"
+          "type": "tuple",
+          "name": "c",
+          "components": [
+            {
+              "type": "bytes",
+              "name": "val"
+            },
+            {
+              "type": "uint256",
+              "name": "bitlen"
+            }
+          ]
         }
       ],
+      "outputs": []
+    },
+    {
+      "type": "function",
       "name": "getCommitRevealValues",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "_round"
+        },
+        {
+          "type": "uint256",
+          "name": "_index"
+        }
+      ],
       "outputs": [
         {
+          "type": "tuple",
+          "name": "",
           "components": [
             {
-              "components": [
-                {
-                  "internalType": "bytes",
-                  "name": "val",
-                  "type": "bytes"
-                },
-                {
-                  "internalType": "uint256",
-                  "name": "bitlen",
-                  "type": "uint256"
-                }
-              ],
-              "internalType": "struct BigNumber",
+              "type": "tuple",
               "name": "c",
-              "type": "tuple"
-            },
-            {
               "components": [
                 {
-                  "internalType": "bytes",
-                  "name": "val",
-                  "type": "bytes"
+                  "type": "bytes",
+                  "name": "val"
                 },
                 {
-                  "internalType": "uint256",
-                  "name": "bitlen",
-                  "type": "uint256"
+                  "type": "uint256",
+                  "name": "bitlen"
                 }
-              ],
-              "internalType": "struct BigNumber",
+              ]
+            },
+            {
+              "type": "tuple",
               "name": "a",
-              "type": "tuple"
-            },
-            {
-              "internalType": "address",
-              "name": "participantAddress",
-              "type": "address"
-            }
-          ],
-          "internalType": "struct ICRRRNGCoordinator.CommitRevealValue",
-          "name": "",
-          "type": "tuple"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "getNextRound",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "getSetUpValues",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        },
-        {
-          "internalType": "bytes",
-          "name": "",
-          "type": "bytes"
-        },
-        {
-          "internalType": "bytes",
-          "name": "",
-          "type": "bytes"
-        },
-        {
-          "internalType": "bytes",
-          "name": "",
-          "type": "bytes"
-        }
-      ],
-      "stateMutability": "pure",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "_owner",
-          "type": "address"
-        },
-        {
-          "internalType": "uint256",
-          "name": "_round",
-          "type": "uint256"
-        }
-      ],
-      "name": "getUserInfosAtRound",
-      "outputs": [
-        {
-          "components": [
-            {
-              "internalType": "uint256",
-              "name": "index",
-              "type": "uint256"
-            },
-            {
-              "internalType": "bool",
-              "name": "committed",
-              "type": "bool"
-            },
-            {
-              "internalType": "bool",
-              "name": "revealed",
-              "type": "bool"
-            }
-          ],
-          "internalType": "struct ICRRRNGCoordinator.UserAtRound",
-          "name": "",
-          "type": "tuple"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "_round",
-          "type": "uint256"
-        }
-      ],
-      "name": "getValuesAtRound",
-      "outputs": [
-        {
-          "components": [
-            {
-              "internalType": "uint256",
-              "name": "startTime",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "numOfPariticipants",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "count",
-              "type": "uint256"
-            },
-            {
-              "internalType": "address",
-              "name": "consumer",
-              "type": "address"
-            },
-            {
-              "internalType": "bytes",
-              "name": "bStar",
-              "type": "bytes"
-            },
-            {
-              "internalType": "bytes",
-              "name": "commitsString",
-              "type": "bytes"
-            },
-            {
               "components": [
                 {
-                  "internalType": "bytes",
-                  "name": "val",
-                  "type": "bytes"
+                  "type": "bytes",
+                  "name": "val"
                 },
                 {
-                  "internalType": "uint256",
-                  "name": "bitlen",
-                  "type": "uint256"
+                  "type": "uint256",
+                  "name": "bitlen"
                 }
-              ],
-              "internalType": "struct BigNumber",
-              "name": "omega",
-              "type": "tuple"
+              ]
             },
             {
-              "internalType": "enum ICRRRNGCoordinator.Stages",
-              "name": "stage",
-              "type": "uint8"
-            },
-            {
-              "internalType": "bool",
-              "name": "isCompleted",
-              "type": "bool"
-            },
-            {
-              "internalType": "bool",
-              "name": "isAllRevealed",
-              "type": "bool"
+              "type": "address",
+              "name": "participantAddress"
             }
-          ],
-          "internalType": "struct ICRRRNGCoordinator.ValueAtRound",
-          "name": "",
-          "type": "tuple"
+          ]
         }
-      ],
+      ]
+    },
+    {
+      "type": "function",
+      "name": "getNextRound",
+      "constant": true,
       "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "components": [
-            {
-              "internalType": "bytes",
-              "name": "val",
-              "type": "bytes"
-            },
-            {
-              "internalType": "uint256",
-              "name": "bitlen",
-              "type": "uint256"
-            }
-          ],
-          "internalType": "struct BigNumber[]",
-          "name": "v",
-          "type": "tuple[]"
-        },
-        {
-          "components": [
-            {
-              "internalType": "bytes",
-              "name": "val",
-              "type": "bytes"
-            },
-            {
-              "internalType": "uint256",
-              "name": "bitlen",
-              "type": "uint256"
-            }
-          ],
-          "internalType": "struct BigNumber",
-          "name": "x",
-          "type": "tuple"
-        },
-        {
-          "components": [
-            {
-              "internalType": "bytes",
-              "name": "val",
-              "type": "bytes"
-            },
-            {
-              "internalType": "uint256",
-              "name": "bitlen",
-              "type": "uint256"
-            }
-          ],
-          "internalType": "struct BigNumber",
-          "name": "y",
-          "type": "tuple"
-        },
-        {
-          "internalType": "bytes",
-          "name": "bigNumTwoPowerOfDelta",
-          "type": "bytes"
-        },
-        {
-          "internalType": "uint256",
-          "name": "delta",
-          "type": "uint256"
-        }
-      ],
-      "name": "initialize",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "round",
-          "type": "uint256"
-        }
-      ],
-      "name": "reRequestRandomWordAtRound",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "round",
-          "type": "uint256"
-        },
-        {
-          "components": [
-            {
-              "internalType": "bytes",
-              "name": "val",
-              "type": "bytes"
-            },
-            {
-              "internalType": "uint256",
-              "name": "bitlen",
-              "type": "uint256"
-            }
-          ],
-          "internalType": "struct BigNumber[]",
-          "name": "v",
-          "type": "tuple[]"
-        },
-        {
-          "components": [
-            {
-              "internalType": "bytes",
-              "name": "val",
-              "type": "bytes"
-            },
-            {
-              "internalType": "uint256",
-              "name": "bitlen",
-              "type": "uint256"
-            }
-          ],
-          "internalType": "struct BigNumber",
-          "name": "x",
-          "type": "tuple"
-        },
-        {
-          "components": [
-            {
-              "internalType": "bytes",
-              "name": "val",
-              "type": "bytes"
-            },
-            {
-              "internalType": "uint256",
-              "name": "bitlen",
-              "type": "uint256"
-            }
-          ],
-          "internalType": "struct BigNumber",
-          "name": "y",
-          "type": "tuple"
-        },
-        {
-          "internalType": "bytes",
-          "name": "bigNumTwoPowerOfDelta",
-          "type": "bytes"
-        },
-        {
-          "internalType": "uint256",
-          "name": "delta",
-          "type": "uint256"
-        }
-      ],
-      "name": "recover",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
+      "payable": false,
       "inputs": [],
-      "name": "requestRandomWord",
       "outputs": [
         {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
+          "type": "uint256",
+          "name": ""
         }
-      ],
-      "stateMutability": "nonpayable",
-      "type": "function"
+      ]
     },
     {
-      "inputs": [
+      "type": "function",
+      "name": "getSetUpValues",
+      "constant": true,
+      "stateMutability": "pure",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
         {
-          "internalType": "uint256",
-          "name": "round",
-          "type": "uint256"
+          "type": "uint256",
+          "name": ""
         },
         {
-          "components": [
-            {
-              "internalType": "bytes",
-              "name": "val",
-              "type": "bytes"
-            },
-            {
-              "internalType": "uint256",
-              "name": "bitlen",
-              "type": "uint256"
-            }
-          ],
-          "internalType": "struct BigNumber",
-          "name": "a",
-          "type": "tuple"
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "bytes",
+          "name": ""
+        },
+        {
+          "type": "bytes",
+          "name": ""
+        },
+        {
+          "type": "bytes",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "getUserInfosAtRound",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "_owner"
+        },
+        {
+          "type": "uint256",
+          "name": "_round"
         }
       ],
+      "outputs": [
+        {
+          "type": "tuple",
+          "name": "",
+          "components": [
+            {
+              "type": "uint256",
+              "name": "index"
+            },
+            {
+              "type": "bool",
+              "name": "committed"
+            },
+            {
+              "type": "bool",
+              "name": "revealed"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "getValuesAtRound",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "_round"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "tuple",
+          "name": "",
+          "components": [
+            {
+              "type": "uint256",
+              "name": "startTime"
+            },
+            {
+              "type": "uint256",
+              "name": "numOfPariticipants"
+            },
+            {
+              "type": "uint256",
+              "name": "count"
+            },
+            {
+              "type": "address",
+              "name": "consumer"
+            },
+            {
+              "type": "bytes",
+              "name": "bStar"
+            },
+            {
+              "type": "bytes",
+              "name": "commitsString"
+            },
+            {
+              "type": "tuple",
+              "name": "omega",
+              "components": [
+                {
+                  "type": "bytes",
+                  "name": "val"
+                },
+                {
+                  "type": "uint256",
+                  "name": "bitlen"
+                }
+              ]
+            },
+            {
+              "type": "uint8",
+              "name": "stage"
+            },
+            {
+              "type": "bool",
+              "name": "isCompleted"
+            },
+            {
+              "type": "bool",
+              "name": "isAllRevealed"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "initialize",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "tuple[]",
+          "name": "v",
+          "components": [
+            {
+              "type": "bytes",
+              "name": "val"
+            },
+            {
+              "type": "uint256",
+              "name": "bitlen"
+            }
+          ]
+        },
+        {
+          "type": "tuple",
+          "name": "x",
+          "components": [
+            {
+              "type": "bytes",
+              "name": "val"
+            },
+            {
+              "type": "uint256",
+              "name": "bitlen"
+            }
+          ]
+        },
+        {
+          "type": "tuple",
+          "name": "y",
+          "components": [
+            {
+              "type": "bytes",
+              "name": "val"
+            },
+            {
+              "type": "uint256",
+              "name": "bitlen"
+            }
+          ]
+        },
+        {
+          "type": "bytes",
+          "name": "bigNumTwoPowerOfDelta"
+        },
+        {
+          "type": "uint256",
+          "name": "delta"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "reRequestRandomWordAtRound",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "round"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "recover",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "round"
+        },
+        {
+          "type": "tuple[]",
+          "name": "v",
+          "components": [
+            {
+              "type": "bytes",
+              "name": "val"
+            },
+            {
+              "type": "uint256",
+              "name": "bitlen"
+            }
+          ]
+        },
+        {
+          "type": "tuple",
+          "name": "x",
+          "components": [
+            {
+              "type": "bytes",
+              "name": "val"
+            },
+            {
+              "type": "uint256",
+              "name": "bitlen"
+            }
+          ]
+        },
+        {
+          "type": "tuple",
+          "name": "y",
+          "components": [
+            {
+              "type": "bytes",
+              "name": "val"
+            },
+            {
+              "type": "uint256",
+              "name": "bitlen"
+            }
+          ]
+        },
+        {
+          "type": "bytes",
+          "name": "bigNumTwoPowerOfDelta"
+        },
+        {
+          "type": "uint256",
+          "name": "delta"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "requestRandomWord",
+      "constant": false,
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "reveal",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "round"
+        },
+        {
+          "type": "tuple",
+          "name": "a",
+          "components": [
+            {
+              "type": "bytes",
+              "name": "val"
+            },
+            {
+              "type": "uint256",
+              "name": "bitlen"
+            }
+          ]
+        }
+      ],
+      "outputs": []
     }
   ]
 }

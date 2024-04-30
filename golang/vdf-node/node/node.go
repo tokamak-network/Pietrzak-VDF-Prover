@@ -17,6 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/fatih/color"
+	"github.com/tokamak-network/Pietrzak-VDF-Prover/golang/crrrng"
 	"github.com/tokamak-network/Pietrzak-VDF-Prover/golang/vdf-node/util"
 	"io/ioutil"
 	"log"
@@ -132,6 +133,10 @@ func (l *Listener) SubscribeRandomWordsRequested() {
 		case err := <-sub.Err():
 			log.Fatal(err)
 		case vLog := <-logs:
+			if l.CommitStarted {
+				continue // Ignore events if a commit is in progress
+			}
+
 			event := EventInfo{}
 			l.ContractABI.UnpackIntoInterface(&event, "RandomWordsRequested", vLog.Data)
 
@@ -144,44 +149,47 @@ func (l *Listener) SubscribeRandomWordsRequested() {
 				l.EventData = append(l.EventData, event)
 				processedRounds[roundKey] = true
 
-				time.AfterFunc(5*time.Second, func() {
-					l.Mutex.Lock()
-					defer l.Mutex.Unlock()
-					if !l.CommitStarted && l.checkAllEventsReceived() {
-						util.StartSpinner("Commit.....", 5)
-						color.New(color.FgYellow, color.Bold).Println("🚫 Hold on! Processing current round...")
-						go l.initiateCommitProcess(round)
-
-						go func() {
-							countdown := 120
-							bar := pb.StartNew(countdown)
-							for i := 0; i < countdown; i++ {
-								bar.Increment()
-								time.Sleep(1 * time.Second)
-							}
-							bar.Finish()
-							fmt.Println("🕒 Countdown completed. Proceeding to the next step.")
-						}()
-					}
-				})
+				l.Mutex.Lock()
+				if !l.CommitStarted && l.checkAllEventsReceived() {
+					l.CommitStarted = true
+					go l.initiateCommitProcess(round)
+				}
+				l.Mutex.Unlock()
 			}
 		}
 	}
-}
-
-// Check if all expected events for the round are received
-func (l *Listener) checkAllEventsReceived() bool {
-	return len(l.EventData) > 0
 }
 
 func (l *Listener) initiateCommitProcess(round *big.Int) {
 	ctx, cancel := context.WithTimeout(context.Background(), 115*time.Second)
 	defer cancel()
 
-	// Start the commit process
+	// Start commit process
 	if err := l.Commit(ctx, round); err != nil {
 		log.Printf("Failed to commit: %v", err)
+		return
 	}
+
+	// Start countdown after commit is successful
+	go func() {
+		countdown := 120
+		bar := pb.StartNew(countdown)
+		for i := 0; i < countdown; i++ {
+			bar.Increment()
+			time.Sleep(1 * time.Second)
+		}
+		bar.Finish()
+		fmt.Println("🕒 Countdown completed. Proceeding to the next step.")
+
+		l.Mutex.Lock()
+		l.CommitStarted = false // Reset the flag to allow new events to be processed
+		l.Mutex.Unlock()
+	}()
+}
+
+// Check if all expected events for the round are received
+func (l *Listener) checkAllEventsReceived() bool {
+	return len(l.EventData) > 0
 }
 
 func (l *Listener) Commit(ctx context.Context, round *big.Int) error {
@@ -223,7 +231,6 @@ func (l *Listener) Commit(ctx context.Context, round *big.Int) error {
 	if err != nil {
 		return fmt.Errorf("failed to decode hex data: %v", err)
 	}
-
 	commitData := struct {
 		Val    []byte
 		Bitlen *big.Int
@@ -248,46 +255,74 @@ func (l *Listener) Commit(ctx context.Context, round *big.Int) error {
 	}
 
 	color.New(color.FgHiGreen, color.Bold).Printf("✅  Commit successful!!\n🔗 Tx Hash: %s\n", signedTx.Hash().Hex())
+
+	round, err = l.GetNextRound()
+	if err != nil {
+		log.Printf("round %s: %v", round.String(), err)
+	}
+	fmt.Printf("round", round)
+
+	//result, err := l.GetValuesAtRound(ctx, round)
+	//fmt.Println("result: ", result)
+
 	return nil
 }
 
-func (l *Listener) GetValuesAtRound(round *big.Int) (*ValueAtRound, error) {
-	chainID, err := l.Client.NetworkID(context.Background())
+func (l *Listener) GetNextRound() (*big.Int, error) {
+	config := LoadConfig()
+	client, err := ethclient.Dial(config.HttpURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get network ID: %v", err)
+		log.Fatalf("Failed to connect to the Ethereum client: %v", err)
 	}
 
-	auth, err := bind.NewKeyedTransactorWithChainID(l.PrivateKey, chainID)
+	contractAddress := common.HexToAddress(config.ContractAddress)
+	instance, err := crrrng.NewCrrrng(contractAddress, client)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create keyed transactor: %v", err)
+		log.Fatalf("Failed to create the contract instance: %v", err)
 	}
 
-	if _, exists := l.ContractABI.Methods["getValuesAtRound"]; !exists {
-		return nil, fmt.Errorf("getValuesAtRound method not found in ABI")
-	}
-
-	data, err := l.ContractABI.Pack("getValuesAtRound", round)
+	opts := &bind.CallOpts{}
+	nextRound, err := instance.GetNextRound(opts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to pack inputs for getValuesAtRound: %v", err)
+		return nil, fmt.Errorf("failed to retrieve the next round: %v", err)
 	}
 
-	callMsg := ethereum.CallMsg{
-		From: auth.From,
-		To:   &l.ContractAddress,
-		Data: data,
-	}
+	fmt.Printf("Next Round: %s\n", nextRound.String())
+	return nextRound, nil
+}
 
-	result, err := l.Client.CallContract(context.Background(), callMsg, nil)
+func (l *Listener) GetValuesAtRound(ctx context.Context, round *big.Int) (*ValueAtRound, error) {
+	config := LoadConfig()
+	client, err := ethclient.Dial(config.RpcURL)
 	if err != nil {
-		return nil, fmt.Errorf("call to getValuesAtRound failed: %v", err)
+		log.Fatalf("Failed to connect to the Ethereum client: %v", err)
+	}
+	contractAddress := common.HexToAddress(config.ContractAddress)
+	instance, err := crrrng.NewCrrrng(contractAddress, client)
+	if err != nil {
+		log.Fatalf("Failed to create the contract instance: %v", err)
 	}
 
-	var valuesAtRound ValueAtRound
-	if err := l.ContractABI.UnpackIntoInterface(&valuesAtRound, "getValuesAtRound", result); err != nil {
-		return nil, fmt.Errorf("failed to unpack result of getValuesAtRound: %v", err)
+	opts := &bind.CallOpts{Context: ctx}
+	rawResult, err := instance.GetValuesAtRound(opts, round)
+	if err != nil {
+		log.Fatalf("Failed to retrieve values at round: %v", err)
 	}
 
-	return &valuesAtRound, nil
+	result := &ValueAtRound{
+		StartTime:     rawResult.StartTime,
+		Count:         rawResult.Count,
+		Consumer:      rawResult.Consumer,
+		BStar:         rawResult.BStar,
+		CommitsString: rawResult.CommitsString,
+		Omega:         BigNumber{rawResult.Omega.Val, rawResult.Omega.Bitlen}, // 예제, BigNumber 구조체 필요
+		Stage:         rawResult.Stage,
+		IsCompleted:   rawResult.IsCompleted,
+		IsAllRevealed: rawResult.IsAllRevealed,
+	}
+
+	fmt.Printf("Values at Round %s: %+v\n", round.String(), result)
+	return result, nil
 }
 
 func (l *Listener) Recover(round *big.Int, v []*big.Int, x *big.Int, y *big.Int, bigNumTwoPowerOfDelta []byte, delta *big.Int) error {
