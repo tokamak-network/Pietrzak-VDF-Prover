@@ -24,7 +24,6 @@ func main() {
 
 	listener.SubscribeRandomWordsRequested()
 	select {} // Maintain the service running
-
 }
 
 func printLogo() {
