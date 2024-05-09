@@ -12,9 +12,11 @@ import (
 
 func Setup(N *big.Int, x *big.Int, T int) (*big.Int, []prover.Claim) {
 	setupEvalTime := time.Now()
-	y, expList := util.CalExp(N, x, T)
+	//y, expList := util.CalExp(N, x, T)
+	y := util.CalExp(N, x, T)
 	tHalf := util.CalTHalf(T)
-	v := util.GetExp(expList, new(big.Int).Exp(big.NewInt(2), big.NewInt(int64(tHalf)), nil), N)
+	v := prover.CalV(N, x, tHalf)
+	//v := util.GetExp(expList, new(big.Int).Exp(big.NewInt(2), big.NewInt(int64(tHalf)), nil), N)
 
 	claim := prover.Claim{
 		N: N,
@@ -115,12 +117,12 @@ func Recover(N *big.Int, T int, c []*big.Int, bStar *big.Int) (*big.Int, []prove
 	omegaRecov := calExpRecov(N, recov, T)
 	claim := crrUtil.ConstructClaim(N, recov, omegaRecov, T)
 	RecovEvalDuration := time.Since(RecovEvalTime)
-	fmt.Println("Recover Eval Time: ", RecovEvalDuration)
+	fmt.Println("Recovery Evaluation Time: ", RecovEvalDuration)
 
 	RecovProofTime := time.Now()
 	proofListRecovery := prover.RecHalveProof(claim)
 	RecovProofDuration := time.Since(RecovProofTime)
-	fmt.Println("Recover Proof Time: ", RecovProofDuration)
+	fmt.Println("Recovery Proof Time: ", RecovProofDuration)
 
 	return omegaRecov, proofListRecovery
 }
