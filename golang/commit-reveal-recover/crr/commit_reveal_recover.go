@@ -99,9 +99,7 @@ func Recover(N *big.Int, T int, c []*big.Int, bStar *big.Int) (*big.Int, []prove
 		cHexStrings = append(cHexStrings, ciHex)
 	}
 
-	if bStar == nil {
-		bStar = util.HashEth(cHexStrings...)
-	}
+	bStar = util.HashEth(cHexStrings...)
 
 	recov := big.NewInt(1)
 	for _, ciHex := range cHexStrings {
@@ -120,7 +118,7 @@ func Recover(N *big.Int, T int, c []*big.Int, bStar *big.Int) (*big.Int, []prove
 	fmt.Println("Recovery Evaluation Time: ", RecovEvalDuration)
 
 	RecovProofTime := time.Now()
-	proofListRecovery := prover.RecHalveProof(claim)
+	proofListRecovery := prover.RecHalveProofWithDelta(claim)
 	RecovProofDuration := time.Since(RecovProofTime)
 	fmt.Println("Recovery Proof Time: ", RecovProofDuration)
 

@@ -168,7 +168,7 @@ func (l *Listener) SubscribeRandomWordsRequested() {
 			round = event.Round
 			roundKey := round.String()
 
-			if _, exists := processedRounds[roundKey]; !exists && event.Round != nil && event.Round.Sign() >= 0 && event.Sender.Hex() != "0x0000000000000000000000000000000000000040" {
+			if _, exists := processedRounds[roundKey]; !exists && event.Round != nil && event.Round.Sign() >= 0 && event.Sender.Hex() != "0x0000000000000000000000000000000000000040" && event.Sender.Hex() != "0x0000000000000000000000000000000000000080" {
 				fmt.Println("------------------------------------------------------")
 				fmt.Printf("🔔 Round: %s, Sender: %s\n", round.String(), event.Sender.Hex())
 				l.EventData = append(l.EventData, event)
@@ -252,9 +252,8 @@ func (l *Listener) Commit(ctx context.Context, round *big.Int) error {
 		return fmt.Errorf("failed to suggest gas price: %v", err)
 	}
 	auth.GasPrice = gasPrice
-	//fmt.Println("Gas Price:", auth.GasPrice)
 
-	randomData := make([]byte, 256)
+	randomData := make([]byte, 32)
 	if _, err := rand.Read(randomData); err != nil {
 		return fmt.Errorf("failed to generate random data: %v", err)
 	}
@@ -264,12 +263,13 @@ func (l *Listener) Commit(ctx context.Context, round *big.Int) error {
 	if err != nil {
 		return fmt.Errorf("failed to decode hex data: %v", err)
 	}
+
 	commitData := struct {
 		Val    []byte
 		Bitlen *big.Int
 	}{
 		Val:    byteData,
-		Bitlen: big.NewInt(2048),
+		Bitlen: big.NewInt(int64(len(byteData) * 8)),
 	}
 
 	packedData, err := l.ContractABI.Pack("commit", round, commitData)
@@ -311,7 +311,6 @@ func (l *Listener) GetNextRound() (*big.Int, error) {
 		return nil, fmt.Errorf("failed to retrieve the next round: %v", err)
 	}
 
-	//fmt.Printf("Next Round: %s\n", nextRound.String())
 	return nextRound, nil
 }
 
@@ -360,12 +359,6 @@ func (l *Listener) GetValuesAtRound(ctx context.Context, round *big.Int) (*Value
 		HVal:              setupValues.HVal,
 	}
 
-	//jsonResult, err := json.Marshal(result)
-	//if err != nil {
-	//	log.Fatalf("Failed to marshal result to JSON: %v", err)
-	//}
-
-	//fmt.Printf("Values at Round %s: %s\n", round.String(), jsonResult)
 	return result, nil
 }
 
@@ -451,11 +444,11 @@ func (b BigNumber) ToBigInt() *big.Int {
 	return new(big.Int).SetBytes(b.Val)
 }
 
-func calculateDeltaBytes(delta int) []byte {
+func CalculateDeltaBytes(delta int) []byte {
 	twoPowerOfDelta := new(big.Int).Exp(big.NewInt(2), big.NewInt(int64(delta)), nil)
 	deltaBytes := twoPowerOfDelta.Bytes()
-	targetLength := 32 // 32 bytes, 256 bits
 
+	targetLength := 32 // 32 bytes, 256 bits
 	if len(deltaBytes) < targetLength {
 		zeroPadLength := targetLength - len(deltaBytes)
 		zeroPad := make([]byte, zeroPadLength)
@@ -474,14 +467,12 @@ func (l *Listener) AutoRecover(ctx context.Context, round *big.Int) error {
 		log.Printf("Error retrieving values at round: %v", err)
 		return err
 	}
-	//fmt.Printf("valuesAtRound: %+v\n", valuesAtRound)
 
 	commitData, err := GetCommitRevealValues(ctx, round)
 	if err != nil {
 		log.Printf("Error retrieving commit-reveal data: %v", err)
 		return err
 	}
-	//fmt.Printf("Commit Data: %+v\n", commitData)
 
 	var commits []*big.Int
 	if commitData.C.Val != nil {
@@ -494,7 +485,6 @@ func (l *Listener) AutoRecover(ctx context.Context, round *big.Int) error {
 
 	omegaRecov, proofListRecovery := crr.Recover(n, T, commits, bStar)
 	fmt.Printf("[+] Recovered random: %s\n", omegaRecov.String())
-	//fmt.Println("Proof List:", proofListRecovery)
 
 	if len(proofListRecovery) == 0 {
 		return fmt.Errorf("proofListRecovery is empty")
@@ -502,25 +492,26 @@ func (l *Listener) AutoRecover(ctx context.Context, round *big.Int) error {
 
 	x := BigNumber{
 		Val:    proofListRecovery[0].X.Bytes(),
-		Bitlen: big.NewInt(int64(len(proofListRecovery[0].X.Bytes()) * 8)),
+		Bitlen: big.NewInt(int64(proofListRecovery[0].X.BitLen())),
 	}
+
 	y := BigNumber{
 		Val:    proofListRecovery[0].Y.Bytes(),
-		Bitlen: big.NewInt(int64(len(proofListRecovery[0].Y.Bytes()) * 8)),
+		Bitlen: big.NewInt(int64(proofListRecovery[0].Y.BitLen())),
 	}
+
 	v := make([]BigNumber, len(proofListRecovery))
 	for i, proof := range proofListRecovery {
 		v[i] = BigNumber{
 			Val:    proof.V.Bytes(),
-			Bitlen: big.NewInt(int64(len(proof.V.Bytes()) * 8)),
+			Bitlen: big.NewInt(int64(proof.V.BitLen())),
 		}
 	}
-	//fmt.Printf("Data being packed: %+v\n", v)
 
 	delta := 9
-	twoPowerOfDeltaBytes := calculateDeltaBytes(delta)
+	twoPowerOfDeltaBytes, _ := hex.DecodeString("0000000000000000000000000000000000000000000000000000000000000200")
 
-	err = l.Recover(ctx, round, v, &x, &y, twoPowerOfDeltaBytes, big.NewInt(int64(delta)))
+	err = l.Recover(ctx, round, v, x, y, twoPowerOfDeltaBytes, big.NewInt(int64(delta)))
 	if err != nil {
 		log.Printf("Failed to execute recovery process: %v", err)
 		return err
@@ -529,7 +520,7 @@ func (l *Listener) AutoRecover(ctx context.Context, round *big.Int) error {
 	return nil
 }
 
-func (l *Listener) Recover(ctx context.Context, round *big.Int, v []BigNumber, x *BigNumber, y *BigNumber, twoPowerOfDeltaBytes []byte, delta *big.Int) error {
+func (l *Listener) Recover(ctx context.Context, round *big.Int, v []BigNumber, x BigNumber, y BigNumber, twoPowerOfDeltaBytes []byte, delta *big.Int) error {
 	chainID, err := l.Client.NetworkID(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to fetch network ID: %v", err)
@@ -555,7 +546,7 @@ func (l *Listener) Recover(ctx context.Context, round *big.Int, v []BigNumber, x
 		return fmt.Errorf("failed to pack data for recovery: %v", err)
 	}
 
-	tx := types.NewTransaction(auth.Nonce.Uint64(), l.ContractAddress, nil, 4000000, auth.GasPrice, packedData)
+	tx := types.NewTransaction(auth.Nonce.Uint64(), l.ContractAddress, nil, 6000000, auth.GasPrice, packedData)
 	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), l.PrivateKey)
 	if err != nil {
 		return fmt.Errorf("failed to sign the transaction: %v", err)
