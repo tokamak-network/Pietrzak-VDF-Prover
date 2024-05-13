@@ -29,8 +29,19 @@ func CalV(N, x *big.Int, T int) *big.Int {
 
 func RecHalveProof(claim Claim) []Claim {
 	proofList := []Claim{claim}
-
 	for claim.T > 1 {
+		claim = HalveProof(claim)
+		proofList = append(proofList, claim)
+	}
+
+	return proofList
+}
+
+func RecHalveProofWithDelta(claim Claim) []Claim {
+	proofList := []Claim{claim}
+	delta := 9
+	deltaPower := 1 << delta
+	for claim.T > deltaPower*2 {
 		claim = HalveProof(claim)
 		proofList = append(proofList, claim)
 	}
