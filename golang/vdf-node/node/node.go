@@ -263,13 +263,14 @@ func (l *Listener) Commit(ctx context.Context, round *big.Int) error {
 	if err != nil {
 		return fmt.Errorf("failed to decode hex data: %v", err)
 	}
+	byteDataBigInt := new(big.Int).SetBytes(byteData)
 
 	commitData := struct {
 		Val    []byte
 		Bitlen *big.Int
 	}{
 		Val:    byteData,
-		Bitlen: big.NewInt(int64(len(byteData) * 8)),
+		Bitlen: big.NewInt(int64(byteDataBigInt.BitLen())),
 	}
 
 	packedData, err := l.ContractABI.Pack("commit", round, commitData)
@@ -294,7 +295,7 @@ func (l *Listener) Commit(ctx context.Context, round *big.Int) error {
 
 func (l *Listener) GetNextRound() (*big.Int, error) {
 	config := LoadConfig()
-	client, err := ethclient.Dial(config.HttpURL)
+	client, err := ethclient.Dial(config.RpcURL)
 	if err != nil {
 		log.Fatalf("Failed to connect to the Ethereum client: %v", err)
 	}
@@ -442,20 +443,6 @@ func GetStage(stageValue uint8) string {
 
 func (b BigNumber) ToBigInt() *big.Int {
 	return new(big.Int).SetBytes(b.Val)
-}
-
-func CalculateDeltaBytes(delta int) []byte {
-	twoPowerOfDelta := new(big.Int).Exp(big.NewInt(2), big.NewInt(int64(delta)), nil)
-	deltaBytes := twoPowerOfDelta.Bytes()
-
-	targetLength := 32 // 32 bytes, 256 bits
-	if len(deltaBytes) < targetLength {
-		zeroPadLength := targetLength - len(deltaBytes)
-		zeroPad := make([]byte, zeroPadLength)
-		deltaBytes = append(zeroPad, deltaBytes...)
-	}
-
-	return deltaBytes
 }
 
 func (l *Listener) AutoRecover(ctx context.Context, round *big.Int) error {
