@@ -91,7 +91,7 @@ func calExpRecov(N, x *big.Int, T int) *big.Int {
 	return result
 }
 
-func Recover(N *big.Int, T int, c []*big.Int, bStar *big.Int) (*big.Int, []prover.Claim) {
+func Recover(N *big.Int, T int, c []*big.Int) (*big.Int, []prover.Claim) {
 	RecovEvalTime := time.Now()
 	var cHexStrings []string
 	for _, ci := range c {
@@ -99,7 +99,7 @@ func Recover(N *big.Int, T int, c []*big.Int, bStar *big.Int) (*big.Int, []prove
 		cHexStrings = append(cHexStrings, ciHex)
 	}
 
-	bStar = util.HashEth(cHexStrings...)
+	bStar := util.HashEth(cHexStrings...)
 
 	recov := big.NewInt(1)
 	for _, ciHex := range cHexStrings {

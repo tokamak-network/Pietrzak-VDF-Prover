@@ -1,364 +1,385 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.23;
+pragma solidity ^0.8.24;
 
-import "./libraries/BigNumbers.sol";
-import {ICRRRNGCoordinator} from "./interfaces/ICRRRNGCoordinator.sol";
-import {RNGConsumerBase} from "./RNGConsumerBase.sol";
+import { ICRRRNGCoordinator } from "./interfaces/ICRRRNGCoordinator.sol";
+import { VDFCRRNG } from "./VDFCRRNG.sol";
+import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
-contract CRRRNGCoordinator is ICRRRNGCoordinator {
-    /* Type declaration */
+/// @title Commit-Recover Random Number Generator Coordinator
+/// @author Justin G
+/// @notice This contract is not audited
+/// @notice This contract is for generating random number
+contract CRRNGCoordinator is ICRRRNGCoordinator, Ownable, VDFCRRNG {
+    // *** State variables
+    // * private
+    uint256 private s_operatorCount;
+    uint256 private s_avgRecoveOverhead;
+    uint256 private s_minimumDepositAmount;
+    uint256 private s_premiumPercentage;
+    uint256 private s_flatFee;
+    mapping(address => uint256) private s_depositAmount;
 
-    /* Constant variables */
-    // uint256
-    uint256 private constant T = 4194304; // 2^22
-    uint256 private constant COMMITDURATION = 120;
-    uint256 private constant COMMITREVEALDURATION = 240;
-    uint256 private constant DEFAULTPROOFLASTINDEX = 22;
-    uint256 private constant NBITLEN = 2047;
-    uint256 private constant GBITLEN = 2046;
-    uint256 private constant HBITLEN = 2044;
-    // 5k is plenty for an EXTCODESIZE call (2600) + warm CALL (100) and some arithmetic operations
-    uint256 private constant GAS_FOR_CALL_EXACT_CHECK = 5_000;
-    // bytes
-    bytes private constant NVAL =
-        hex"4e502cc741a1a63c4ae0cea62d6eefae5d0395e137075a15b515f0ced5c811334f06272c0f1e85c1bed5445025b039e42d0a949989e2c210c9b68b9af5ada8c0f72fa445ce8f4af9a2e56478c8a6b17a6f1c389445467fe096a4c35262e4b06a6ba67a419bcca5d565e698ead674fca78e5d91fdc18f854b8e43edbca302c5d2d2d47ce49afb7405a4db2e87c98c2fd0718af32c1881e4d6d762f624de2d57663754aedfb02cbcc944812d2f8de4f694c933a1c11ecdbb2e67cf22f410487d598ef3d82190feabf11b5a83a4a058cdda1def94cd244fd30412eb8fa6d467398c21a15af04bf55078d9c73e12e3d0f5939804845b1487fae1fb526fa583e27d71";
-    bytes private constant GVAL =
-        hex"34bea67f7d10481d71f794f7bf849b91a460b6488fc0def25ff20b19ff63e984e88daef00289931b566f3e25121e8757751e670a04735a78ff255d804caa197aa65da842913a243add64d375e378380e818b330cc9ef2a89753046248e41eff0f87d8ef4f7764e0ed3698b7f87b07805d235627c80e695f3f6095ca6523312a2916456ed011863d5287a33bf603f495071878ebcb06b9303ffa57ac9b5a77121a20fdbe15004010935d65fc39b199692bbadf172ae84a279f63e31997865c133a6cb8ca4e6c29677a46b932c75297347c605b7fe1c292a96d6401f22b4e4ff474e47cfa59ccfef24d99c3777c98bff523f4a587d54ddc395f572bcde1ae93ba1";
-    bytes private constant HVAL =
-        hex"08d72e28d1cef1b56bc3047d29624445ce203a0c6de5343a5f4873b4017f479e93fc4c3179d4db28dc7e4a6c859469868e50f3347b8736da84cd0995c661b99df90afa21267a8d7588704b9fc249bac3a3087ff1372f8fbfe1f8625c1a42113ebda7fc364a27d8a0c85dab8802f1b3983e867c3b11fedab831b5d6c1d49a906dd5366dd30816c174d6d384295e0229ddb1685eb5c57b9cde512ff50d82bf659eff8b9f3c8d2f0c2737c83eb44463ca23d93e29fa9630c06809b8a6327a29468e19042a7eac025c234be9fe349a19d7b3e5e4acca63f0b4a592b1749a15a1f054689b1809a4b95b27b8513fa1639c98ca9e18113bf36d631944c37459b5575a17";
-
-    /* State variables */
-    uint256 private s_nextRound;
-    mapping(uint256 round => ValueAtRound) private s_valuesAtRound;
-    mapping(uint256 round => mapping(uint256 index => CommitRevealValue))
-        private s_commitRevealValues;
-    mapping(uint256 round => mapping(address owner => UserAtRound)) private s_userInfosAtRound;
-    bool private s_reentrancyLock;
-    bool private s_verified;
-
-    /* Modifiers */
-    modifier nonReentrant() {
-        if (s_reentrancyLock) {
-            revert ReentrancyGuard();
-        }
-        _;
-    }
-    modifier checkStage(uint256 round, Stages stage) {
-        if (round >= s_nextRound) revert NotStartedRound();
-        uint256 _startTime = s_valuesAtRound[round].startTime;
-        Stages _stage = s_valuesAtRound[round].stage;
-        if (_stage == Stages.Commit && block.timestamp >= _startTime + COMMITDURATION) {
-            uint256 _count = s_valuesAtRound[round].count;
-            if (_count > BigNumbers.UINTONE) {
-                _stage = Stages.Reveal;
-                s_valuesAtRound[round].numOfPariticipants = _count;
-                s_valuesAtRound[round].bStar = _hash(s_valuesAtRound[round].commitsString).val;
-            } else {
-                _stage = Stages.Finished;
-            }
-        }
-        if (_stage == Stages.Reveal && block.timestamp >= _startTime + COMMITREVEALDURATION) {
-            _stage = Stages.Finished;
-        }
-        if (_stage != stage) revert FunctionInvalidAtThisStage();
-        s_valuesAtRound[round].stage = _stage;
-        _;
-    }
-    modifier checkRecoverStage(uint256 round) {
-        if (round >= s_nextRound) revert NotStartedRound();
-        uint256 _startTime = s_valuesAtRound[round].startTime;
-        Stages _stage = s_valuesAtRound[round].stage;
-        if (_stage == Stages.Commit && block.timestamp >= _startTime + COMMITDURATION) {
-            uint256 _count = s_valuesAtRound[round].count;
-            if (_count > BigNumbers.UINTZERO) {
-                _stage = Stages.Reveal;
-                s_valuesAtRound[round].numOfPariticipants = _count;
-                s_valuesAtRound[round].bStar = _hash(s_valuesAtRound[round].commitsString).val;
-            } else {
-                _stage = Stages.Finished;
-            }
-        }
-        if (_stage == Stages.Reveal && block.timestamp >= _startTime + COMMITREVEALDURATION) {
-            _stage = Stages.Finished;
-        }
-        if (_stage == Stages.Commit) revert FunctionInvalidAtThisStage();
-        s_valuesAtRound[round].stage = _stage;
-        _;
+    /// @notice The deployer becomes the owner of the contract
+    /// @dev no zero checks
+    /// @param disputePeriod The dispute period after recovery
+    /// @param minimumDepositAmount The minimum deposit amount to become operators
+    /// @param avgRecoveOverhead The average gas cost for recovery of the random number
+    /// @param premiumPercentage The percentage of the premium, will be set to 0
+    /// @param flatFee The flat fee for the direct funding
+    constructor(
+        uint256 disputePeriod,
+        uint256 minimumDepositAmount,
+        uint256 avgRecoveOverhead,
+        uint256 premiumPercentage,
+        uint256 flatFee
+    ) VDFCRRNG(disputePeriod) Ownable(msg.sender) {
+        s_avgRecoveOverhead = avgRecoveOverhead;
+        s_minimumDepositAmount = minimumDepositAmount;
+        s_premiumPercentage = premiumPercentage;
+        s_flatFee = flatFee;
     }
 
-    function initialize(
-        BigNumber[] memory v,
-        BigNumber memory x,
-        BigNumber memory y,
-        bytes memory bigNumTwoPowerOfDelta,
-        uint256 delta
-    ) external {
-        if (s_verified) revert AlreadyVerified();
-        require(BigNumbers.eq(BigNumber(GVAL, GBITLEN), x));
-        require(BigNumbers.eq(BigNumber(HVAL, HBITLEN), y));
-        _verifyRecursiveHalvingProof(
-            v,
-            x,
-            y,
-            BigNumber(NVAL, NBITLEN),
-            bigNumTwoPowerOfDelta,
-            delta
-        );
-        s_verified = true;
+    /** @notice Sets the settings for the contract. The owner will be transfer to mini DAO contract in the future.
+     *  1. only owner can set the settings<br>
+     *  2. no safety checks for values since it is only owner
+     * @param disputePeriod The dispute period after recovery
+     * @param minimumDepositAmount The minimum deposit amount to become operators
+     * @param avgRecoveOverhead The average gas cost for recovery of the random number
+     * @param premiumPercentage The percentage of the premium, will be set to 0
+     * @param flatFee The flat fee for the direct funding
+     */
+    function setSettings(
+        uint256 disputePeriod,
+        uint256 minimumDepositAmount,
+        uint256 avgRecoveOverhead,
+        uint256 premiumPercentage,
+        uint256 flatFee
+    ) external onlyOwner {
+        s_disputePeriod = disputePeriod;
+        s_minimumDepositAmount = minimumDepositAmount;
+        s_avgRecoveOverhead = avgRecoveOverhead;
+        s_premiumPercentage = premiumPercentage;
+        s_flatFee = flatFee;
     }
 
-    /* External Functions */
-    function commit(uint256 round, BigNumber memory c) external checkStage(round, Stages.Commit) {
-        //check
-        if (BigNumbers.isZero(c)) revert ShouldNotBeZero();
-        if (s_userInfosAtRound[round][msg.sender].committed) revert AlreadyCommitted();
-        //effect
-        uint256 _count = s_valuesAtRound[round].count;
-        s_userInfosAtRound[round][msg.sender].index = _count;
-        s_userInfosAtRound[round][msg.sender].committed = true;
-        s_commitRevealValues[round][_count].c = c;
-        s_commitRevealValues[round][_count].participantAddress = msg.sender;
-        s_valuesAtRound[round].commitsString = bytes.concat(
-            s_valuesAtRound[round].commitsString,
-            c.val
-        );
-        s_valuesAtRound[round].count = _count = _unchecked_inc(_count);
-        emit CommitC(_count, c.val);
-    }
-
-    function reveal(uint256 round, BigNumber memory a) external checkStage(round, Stages.Reveal) {
-        // check
-        uint256 _userIndex = s_userInfosAtRound[round][msg.sender].index;
-        if (!s_userInfosAtRound[round][msg.sender].committed) revert NotCommittedParticipant();
-        if (s_userInfosAtRound[round][msg.sender].revealed) revert AlreadyRevealed();
-        if (
-            !BigNumbers.eq(
-                BigNumbers.modexp(BigNumber(GVAL, GBITLEN), a, BigNumber(NVAL, NBITLEN)),
-                s_commitRevealValues[round][_userIndex].c
-            )
-        ) revert ModExpRevealNotMatchCommit();
-        //effect
-        uint256 _count;
-        unchecked {
-            _count = --s_valuesAtRound[round].count;
-        }
-        if (_count == BigNumbers.UINTZERO) {
-            s_valuesAtRound[round].stage = Stages.Finished;
-            s_valuesAtRound[round].isAllRevealed = true;
-        }
-        s_commitRevealValues[round][_userIndex].a = a;
-        s_userInfosAtRound[round][msg.sender].revealed = true;
-        emit RevealA(_count, a.val);
-    }
-
-    function requestRandomWord() external returns (uint256) {
-        if (!s_verified) revert NotVerified();
+    /** @param callbackGasLimit  Test and adjust this limit based on the processing of the callback request in your fulfillRandomWords() function.
+     * @return requestId The round ID of the request
+     * @notice Consumer requests a random number, the consumer must send the cost of the request. There is refund logic in the contract to refund the excess amount sent by the consumer, so nonReentrant modifier is used to prevent reentrancy attacks.
+     * - checks
+     * 1. Reverts when reentrancy is detected
+     * 2. Reverts when the VDF values are not verified
+     * 3. Reverts when the number of operators is less than 2
+     * 4. Reverts when the value sent from consumer is less than the _calculateDirectFundingPrice function result
+     * - effects
+     * 1. Increments the round number
+     * 2. Sets the stage of the round to Commit, commit starts
+     * 3. Sets the msg.sender as the consumer of the round, doesn't check if the consumer is EOA or CA
+     * 4. Sets the cost of the round, derived from the _calculateDirectFundingPrice function
+     * 5. Emits a RandomWordsRequested(round, msg.sender) event
+     * - interactions
+     * 1. Refunds the excess amount sent over the result of the _calculateDirectFundingPrice function, reverts if the refund fails
+     */
+    function requestRandomWordDirectFunding(
+        uint32 callbackGasLimit
+    ) external payable nonReentrant returns (uint256) {
+        if (!s_initialized) revert NotVerified();
+        if (s_operatorCount < 2) revert NotEnoughOperators();
+        uint256 cost = _calculateDirectFundingPrice(callbackGasLimit, tx.gasprice);
+        if (msg.value < cost) revert InsufficientAmount();
         uint256 _round = s_nextRound++;
-        s_valuesAtRound[_round].startTime = block.timestamp;
         s_valuesAtRound[_round].stage = Stages.Commit;
         s_valuesAtRound[_round].consumer = msg.sender;
+        s_cost[_round] = cost;
         emit RandomWordsRequested(_round, msg.sender);
+        bool success = _send(msg.sender, gasleft(), msg.value - cost);
+        if (!success) revert SendFailed();
         return _round;
     }
 
-    function reRequestRandomWordAtRound(uint256 round) external checkStage(round, Stages.Finished) {
+    /**
+     * @param round The round ID of the request
+     * @notice This function can be called by anyone to restart the commit stage of the round when commits are less than 2 after the commit stage ends
+     * - checks
+     * 1. Reverts when the current block timestamp is less than the start time of the round plus the commit duration, meaning the commit stage is still ongoing
+     * 2. Reverts when the number of commits is more than 1, because the recovery stage is already started
+     * - effects
+     * 1. Resets the stage of the round to Commit
+     * 2. Resets the start time of the round
+     * 3. ReEmits a RandomWordsRequested(round, msg.sender) event
+     */
+    function reRequestRandomWordAtRound(
+        uint256 round
+    ) external nonReentrant checkStage(round, Stages.Finished) {
         // check
+        if (s_operatorCount < 2) revert NotEnoughOperators();
         if (block.timestamp < s_valuesAtRound[round].startTime + COMMITDURATION)
             revert StillInCommitStage();
-        if (s_valuesAtRound[round].isCompleted) revert OmegaAlreadyCompleted();
-        if (s_valuesAtRound[round].numOfPariticipants > BigNumbers.UINTONE)
-            revert TwoOrMoreCommittedPleaseRecover();
+        if (s_valuesAtRound[round].commitCounts > 1) revert TwoOrMoreCommittedPleaseRecover();
         s_valuesAtRound[round].stage = Stages.Commit;
         s_valuesAtRound[round].startTime = block.timestamp;
         emit RandomWordsRequested(round, msg.sender);
     }
 
-    function calculateOmega(
+    /**
+     * @notice This function is for anyone to become an operator by depositing the minimum deposit amount, also for operators to increase their deposit amount
+     * - checks
+     * 1. Reverts when the deposit amount of the msg.sender plus the value sent is less than the minimum deposit amount
+     * - effects
+     * 1. Increments the operator count when the msg.sender was not an operator before
+     * 2. Sets the operator status of the msg.sender to true
+     * 3. Increments the deposit amount of the msg.sender
+     */
+    function operatorDeposit() external payable {
+        if (s_depositAmount[msg.sender] + msg.value < s_minimumDepositAmount)
+            revert CRRNGCoordinator_InsufficientDepositAmount();
+        if (!s_operators[msg.sender]) {
+        unchecked {
+            ++s_operatorCount;
+        }
+            s_operators[msg.sender] = true;
+        }
+    unchecked {
+        s_depositAmount[msg.sender] += msg.value;
+    }
+    }
+
+    /**
+     * @param amount The amount to withdraw
+     * @notice This function is for operators to withdraw their deposit amount, also for operators to decrease their deposit amount
+     * - checks
+     * 1. Reverts when the dispute end time of the operator is more than the current block timestamp, meaning the operator could be in a dispute
+     * 2. Reverts when the parameter amount is more than the deposit amount of the operator
+     * - effects
+     * 1. If the deposit amount of the operator minus the amount is less than the minimum deposit amount
+     * <br>&nbsp;- Sets the operator status of the operator to false
+     * <br>&nbsp;- Decrements the operator count
+     * 2. Decrements the deposit amount of the operator
+     * - interactions
+     * 1. Sends the amount to the operator, reverts if the send fails
+     */
+    function operatorWithdraw(uint256 amount) external onlyOperator nonReentrant {
+        uint256 depositAmount = s_depositAmount[msg.sender];
+        if (s_disputeEndTimeForOperator[msg.sender] > block.timestamp)
+            revert DisputePeriodNotEnded();
+        if (depositAmount < amount) revert CRRNGCoordinator_InsufficientDepositAmount();
+        if (depositAmount - amount < s_minimumDepositAmount) {
+            s_operators[msg.sender] = false;
+        unchecked {
+            s_operatorCount--;
+        }
+        }
+        s_depositAmount[msg.sender] -= amount;
+        bool success = _send(msg.sender, gasleft(), amount);
+        if (!success) revert SendFailed();
+    }
+
+    /**
+     * @param round The round ID of the request
+     * @notice This function is for operators who have committed to the round to dispute the leadership of the round
+     * - checks
+     * 1. Reverts when the operator has not committed to the round
+     * 2. Reverts when the dispute end time of the round is less than the current block timestamp, meaning the dispute period has ended
+     * 3. Reverts when the round is not completed, meaning the recovery stage is not ended
+     * 4. Reverts when the msg.sender is already the leader
+     * 5. Reverts when the keccak256(omega, msg.sender) is greater than the keccak256(omega, previousLeader)
+     * - effects
+     * 1. Resets the leader of the round to the msg.sender
+     * 2. Sets the dispute end time of the operator to the dispute end time of the round, meaning the operator can't withdraw the deposit amount until the dispute period ends
+     * 3. Increments the incentive of the msg.sender by the cost of the round
+     * 4. Decrements the incentive of the previous leader by the cost of the round
+     */
+    function disputeLeadershipAtRound(uint256 round) external onlyOperator {
+        // check if committed
+        if (!s_operatorStatusAtRound[round][msg.sender].committed) revert NotCommittedParticipant();
+        if (s_disputeEndTimeAtRound[round] < block.timestamp) revert DisputePeriodEnded();
+        if (!s_valuesAtRound[round].isCompleted) revert OmegaNotCompleted();
+        bytes memory _omega = s_valuesAtRound[round].omega.val;
+        address _leader = s_leaderAtRound[round];
+        if (_leader == msg.sender) revert AlreadyLeader();
+        bytes32 _leaderHash = keccak256(abi.encodePacked(_omega, _leader));
+        bytes32 _myHash = keccak256(abi.encodePacked(_omega, msg.sender));
+        if (_myHash < _leaderHash) {
+            s_leaderAtRound[round] = msg.sender;
+            s_disputeEndTimeForOperator[msg.sender] = s_disputeEndTimeAtRound[round];
+            s_disputeEndTimeForOperator[_leader] = 0;
+            s_incentiveForOperator[msg.sender] += s_cost[round];
+            s_incentiveForOperator[_leader] -= s_cost[round];
+        } else revert NotLeader();
+    }
+
+    /**
+     * @param _callbackGasLimit The gas limit for the processing of the callback request in consumer's fulfillRandomWords() function.
+     * @param gasPrice The expected gas price for the callback transaction.
+     * @return calculatedDirectFundingPrice The cost of the direct funding
+     * @notice This function is for the consumer to estimate the cost of the direct funding
+     * 1. returns cost =  (((gasPrice * (_callbackGasLimit + s_avgRecoveOverhead)) * (s_premiumPercentage + 100)) / 100) + s_flatFee;
+     */
+    function estimateDirectFundingPrice(
+        uint32 _callbackGasLimit,
+        uint256 gasPrice
+    ) external view returns (uint256) {
+        return _calculateDirectFundingPrice(_callbackGasLimit, gasPrice);
+    }
+
+    /**
+     * @param _callbackGasLimit The gas limit for the processing of the callback request in consumer's fulfillRandomWords() function.
+     * @return calculatedDirectFundingPrice The cost of the direct funding
+     * @notice This function is for the consumer to calculate the cost of the direct funding with the current gas price on-chain
+     * 1. returns cost =  (((tx.gasprice * (_callbackGasLimit + s_avgRecoveOverhead)) * (s_premiumPercentage + 100)) / 100) + s_flatFee;
+     */
+    function calculateDirectFundingPrice(
+        uint32 _callbackGasLimit
+    ) external view override returns (uint256) {
+        return _calculateDirectFundingPrice(_callbackGasLimit, tx.gasprice);
+    }
+
+    // *** getter functions
+    /**
+     * @param round The round ID of the request
+     * @return disputeEndTimeAtRound The dispute end time of the round
+     * @return leaderAtRound The leader of the round
+     * @notice This getter function is for anyone to get the dispute end time and the leader of the round
+     * - return order
+     * 0. dispute end time
+     * 1. leader
+     */
+    function getDisputeEndTimeAndLeaderAtRound(
         uint256 round
-    ) external nonReentrant checkStage(round, Stages.Finished) {
-        // check
-        if (!s_valuesAtRound[round].isAllRevealed) revert NotAllRevealed();
-        if (s_valuesAtRound[round].isCompleted) revert OmegaAlreadyCompleted();
-        uint256 _numOfPariticipants = s_valuesAtRound[round].numOfPariticipants;
-        BigNumber memory _omega = BigNumber(BigNumbers.BYTESONE, BigNumbers.UINTONE);
-        bytes memory _bStar = s_valuesAtRound[round].bStar;
-        BigNumber memory _h = BigNumber(HVAL, HBITLEN);
-        BigNumber memory _n = BigNumber(NVAL, NBITLEN);
-        BigNumber memory _temp;
-        for (uint256 i; i < _numOfPariticipants; i = _unchecked_inc(i)) {
-            _temp = _hash(s_commitRevealValues[round][i].c.val, _bStar);
-            _temp = BigNumbers.modexp(
-                BigNumbers.modexp(_h, _temp, _n),
-                s_commitRevealValues[round][i].a,
-                _n
-            );
-            _omega = BigNumbers.modmul(_omega, _temp, _n);
-        }
-        s_valuesAtRound[round].omega = _omega;
-        s_valuesAtRound[round].isCompleted = true;
-        emit CalculateOmega(round, _omega.val);
+    ) external view returns (uint256, address) {
+        return (s_disputeEndTimeAtRound[round], s_leaderAtRound[round]);
     }
 
-    function recover(
-        uint256 round,
-        BigNumber[] memory v,
-        BigNumber memory x,
-        BigNumber memory y,
-        bytes memory bigNumTwoPowerOfDelta,
-        uint256 delta
-    ) external checkRecoverStage(round) nonReentrant {
-        // check
-        uint256 _numOfPariticipants = s_valuesAtRound[round].numOfPariticipants;
-        if (_numOfPariticipants == BigNumbers.UINTZERO) revert NoneParticipated();
-        if (s_valuesAtRound[round].isCompleted) revert OmegaAlreadyCompleted();
-        BigNumber memory _n = BigNumber(NVAL, NBITLEN);
-        bytes memory _bStar = s_valuesAtRound[round].bStar;
-        _verifyRecursiveHalvingProof(v, x, y, _n, bigNumTwoPowerOfDelta, delta);
-        BigNumber memory _recov = BigNumber(BigNumbers.BYTESONE, BigNumbers.UINTONE);
-        for (uint256 i; i < _numOfPariticipants; i = _unchecked_inc(i)) {
-            BigNumber memory _c = s_commitRevealValues[round][i].c;
-            _recov = BigNumbers.modmul(
-                _recov,
-                BigNumbers.modexp(_c, _hash(_c.val, _bStar), _n),
-                _n
-            );
-        }
-        if (!BigNumbers.eq(_recov, x)) revert RecovNotMatchX();
-        // effect
-        s_valuesAtRound[round].isCompleted = true;
-        s_valuesAtRound[round].omega = y;
-        s_valuesAtRound[round].stage = Stages.Finished;
-        // interaction
-        // Do not allow any non-view/non-pure coordinator functions to be called during the consumers callback code via reentrancyLock.
-        s_reentrancyLock = true;
-        bool success = _call(
-            s_valuesAtRound[round].consumer,
-            abi.encodeWithSelector(
-                RNGConsumerBase.rawFulfillRandomWords.selector,
-                round,
-                uint256(keccak256(y.val))
-            )
-        );
-        s_reentrancyLock = false;
-        emit Recovered(round, _recov.val, y.val, success);
+    /**
+     * @param operator The operator address
+     * @return s_disputeEndTimeForOperator The dispute end time of the operator
+     * @return s_incentiveForOperator The all incentive of the operator
+     * @notice This getter function is for anyone to get the dispute end time and all the incentive of the operator
+     * - return order
+     * 0. dispute end time
+     * 1. incentive
+     */
+    function getDisputeEndTimeAndIncentiveOfOperator(
+        address operator
+    ) external view returns (uint256, uint256) {
+        return (s_disputeEndTimeForOperator[operator], s_incentiveForOperator[operator]);
     }
 
+    /**
+     * @param round The round ID of the request
+     * @return costOfRound The cost of the round. The cost includes the _callbackGasLimit, recovery gas cost, premium, and flat fee. premium is set to 0.
+     * @notice This getter function is for anyone to get the cost of the round
+     */
+    function getCostAtRound(uint256 round) external view returns (uint256) {
+        return s_cost[round];
+    }
+
+    /**
+     * @param operator The operator address
+     * @return depositAmount The deposit amount of the operator
+     * @notice This getter function is for anyone to get the deposit amount of the operator
+     */
+    function getDepositAmount(address operator) external view returns (uint256) {
+        return s_depositAmount[operator];
+    }
+
+    /**
+     * @return minimumDepositAmount The minimum deposit amount to become operators
+     * @notice This getter function is for anyone to get the minimum deposit amount to become operators
+     */
+    function getMinimumDepositAmount() external view returns (uint256) {
+        return s_minimumDepositAmount;
+    }
+
+    /**
+     * @return nextRound The next round ID
+     * @notice This getter function is for anyone to get the next round ID
+     */
     function getNextRound() external view returns (uint256) {
         return s_nextRound;
     }
 
-    function getSetUpValues()
-        external
-        pure
-        returns (uint256, uint256, uint256, uint256, bytes memory, bytes memory, bytes memory)
-    {
-        return (T, NBITLEN, GBITLEN, HBITLEN, NVAL, GVAL, HVAL);
-    }
-
+    /**
+     * @param _round The round ID of the request
+     * @return The values of the round that are used for commit and recovery stages. The return value is struct ValueAtRound
+     * @notice This getter function is for anyone to get the values of the round that are used for commit and recovery stages
+     * - [0]: startTime -> The start time of the round
+     * - [1]:numOfPariticipants -> This is the number of operators who have committed to the round. And this is updated on the recovery stage.
+     * - [2]: count -> The number of operators who have committed to the round. And this is updated real-time.
+     * - [3]: consumer -> The address of the consumer of the round
+     * - [4]: bStar -> The bStar value of the round. This is updated on recovery stage.
+     * - [5]: commitsString -> The concatenated string of the commits of the operators. This is updated when commit
+     * - [6]: omega -> The omega value of the round. This is updated after recovery.
+     * - [7]: stage -> The stage of the round. 0 is Recovered or NotStarted, 1 is Commit
+     * - [8]: isCompleted -> The flag to check if the round is completed. This is updated after recovery.
+     */
     function getValuesAtRound(uint256 _round) external view returns (ValueAtRound memory) {
         return s_valuesAtRound[_round];
     }
 
-    function getCommitRevealValues(
+    /**
+     * @param _operator The operator address
+     * @param _round The round ID of the request
+     * @return The status of the operator at the round. The return value is struct UserStatusAtRound
+     * @notice This getter function is for anyone to get the status of the operator at the round
+     *
+     * - [0]: index -> The index of the commitValue array of the operator
+     * - [1]: committed -> The flag to check if the operator has committed to the round
+     */
+    function getUserStatusAtRound(
+        address _operator,
+        uint256 _round
+    ) external view returns (OperatorStatusAtRound memory) {
+        return s_operatorStatusAtRound[_round][_operator];
+    }
+
+    /**
+     * @param _round The round ID of the request
+     * @return The commit value and the operator address of the round. The return value is struct CommitValue
+     * @notice This getter function is for anyone to get the commit value and the operator address of the round
+     * - [0]: commit -> The commit value of the operator
+     * - [2]: operator -> The operator address
+     */
+    function getCommitValue(
         uint256 _round,
         uint256 _index
-    ) external view returns (CommitRevealValue memory) {
-        return s_commitRevealValues[_round][_index];
+    ) external view returns (CommitValue memory) {
+        return s_commitValues[_round][_index];
     }
 
-    function getUserInfosAtRound(
-        address _owner,
-        uint256 _round
-    ) external view returns (UserAtRound memory) {
-        return s_userInfosAtRound[_round][_owner];
+    /**
+     * @param _callbackGasLimit The gas limit for the processing of the callback request in consumer's fulfillRandomWords() function.
+     * @param gasPrice The gas price for the callback transaction.
+     * @return calculatedDirectFundingPrice The cost of the direct funding
+     * @notice This function is for the contract to calculate the cost of the direct funding
+     * - returns cost =  (((gasPrice * (_callbackGasLimit + s_avgRecoveOverhead)) * (s_premiumPercentage + 100)) / 100) + s_flatFee;
+     */
+    function _calculateDirectFundingPrice(
+        uint32 _callbackGasLimit,
+        uint256 gasPrice
+    ) internal view returns (uint256) {
+        return
+        (((gasPrice * (_callbackGasLimit + s_avgRecoveOverhead)) *
+        (s_premiumPercentage + 100)) / 100) + s_flatFee;
     }
 
-    function _hash128(
-        bytes memory a,
-        bytes memory b,
-        bytes memory c
-    ) private view returns (BigNumber memory) {
-        return BigNumbers.init(abi.encodePacked(keccak256(bytes.concat(a, b, c)) >> 128));
-    }
-
-    function _hash(bytes memory strings) private view returns (BigNumber memory) {
-        return BigNumbers.init(abi.encodePacked(keccak256(strings)));
-    }
-
-    function _hash(bytes memory a, bytes memory b) private view returns (BigNumber memory) {
-        return BigNumbers.init(abi.encodePacked(keccak256(bytes.concat(a, b))));
-    }
-
-    function _unchecked_inc(uint256 i) private pure returns (uint256) {
-        unchecked {
-            return i + BigNumbers.UINTONE;
-        }
-    }
-
-    function _verifyRecursiveHalvingProof(
-        BigNumber[] memory v,
-        BigNumber memory x,
-        BigNumber memory y,
-        BigNumber memory n,
-        bytes memory bigNumTwoPowerOfDelta,
-        uint256 delta
-    ) private view {
-        uint i;
-        uint256 iMax;
-        unchecked {
-            iMax = DEFAULTPROOFLASTINDEX - delta;
-        }
-        do {
-            BigNumber memory _r = _hash128(x.val, y.val, v[i].val);
-            x = BigNumbers.modmul(BigNumbers.modexp(x, _r, n), v[i], n);
-            y = BigNumbers.modmul(BigNumbers.modexp(v[i], _r, n), y, n);
-            unchecked {
-                ++i;
-            }
-        } while (i < iMax);
-        BigNumber memory _two = BigNumber(BigNumbers.BYTESTWO, BigNumbers.UINTTWO);
-        if (
-            !BigNumbers.eq(
-                y,
-                BigNumbers.init(
-                    BigNumbers._modexp(
-                        x.val,
-                        BigNumbers._modexp(
-                            BigNumbers.BYTESTWO,
-                            bigNumTwoPowerOfDelta,
-                            BigNumbers._powModulus(_two, 2 ** delta).val
-                        ),
-                        n.val
-                    )
-                )
-            )
-        ) revert NotVerifiedAtTOne();
-    }
-
-    function _call(address target, bytes memory data) private returns (bool success) {
+    /// @notice Performs a low level call without copying any returndata.
+    /// @notice Passes no calldata to the call context.
+    /// @param _target   Address to call
+    /// @param _gas      Amount of gas to pass to the call
+    /// @param _value    Amount of value to pass to the call
+    function _send(address _target, uint256 _gas, uint256 _value) private returns (bool) {
+        bool _success;
         assembly {
-            let g := gas()
-            // Compute g -= GAS_FOR_CALL_EXACT_CHECK and check for underflow
-            // The gas actually passed to the callee is min(gasAmount, 63//64*gas available)
-            // We want to ensure that we revert if gasAmount > 63//64*gas available
-            // as we do not want to provide them with less, however that check itself costs
-            // gas. GAS_FOR_CALL_EXACT_CHECK ensures we have at least enough gas to be able to revert
-            // if gasAmount > 63//64*gas available.
-            if lt(g, GAS_FOR_CALL_EXACT_CHECK) {
-                revert(0, 0)
-            }
-            g := sub(g, GAS_FOR_CALL_EXACT_CHECK)
-            // if g - g//64 <= gas
-            // we subtract g//64 because of EIP-150
-            g := sub(g, div(g, 64))
-            // solidity calls check that a contract actually exists at the destination, so we do the same
-            if iszero(extcodesize(target)) {
-                revert(0, 0)
-            }
-            // call and return whether we succeeded. ignore return data
-            // call(gas, addr, value, argsOffset,argsLength,retOffset,retLength)
-            success := call(g, target, 0, add(data, 0x20), mload(data), 0, 0)
+            _success := call(
+            _gas, // gas
+            _target, // recipient
+            _value, // ether value
+            0, // inloc
+            0, // inlen
+            0, // outloc
+            0 // outlen
+            )
         }
-        return success;
+        return _success;
     }
 }
