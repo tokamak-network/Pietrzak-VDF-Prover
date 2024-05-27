@@ -1,7 +1,0 @@
-{
-  "RpcURL": "ws://127.0.0.1:8545",
-  "HttpURL": "http://127.0.0.1:8545",
-  "PrivateKey": "0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6",
-  "ContractAddress": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
-  "WalletAddress": "0x90F79bf6EB2c4f870365E785982E1f101E93b906"
-}
