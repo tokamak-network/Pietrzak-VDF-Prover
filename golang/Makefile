@@ -16,16 +16,18 @@ install-go:
 	else \
 		echo "Installing Go..."; \
 		wget -P ~/ https://go.dev/dl/go1.22.3.linux-amd64.tar.gz; \
-		sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf ~/go1.22.3.linux-amd64.tar.gz; \
-		echo 'export PATH=$$PATH:/usr/local/go/bin' >> ~/.bashrc; \
-		source ~/.bashrc; \
+		sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf ~/go1.22.3.linux-amd64.tar.gz; \\
 		echo "New version of Go installed. Checking version..."; \
-		go version; \
+		/usr/local/go/bin/go version; \
 	fi
 
 install-go-dependency:
-	@echo "Running go mod tidy"
-	@go mod tidy
+	@echo "Changing directory to Pietrzak-VDF-Prover/golang and running go mod tidy"
+	@cd ./Pietrzak-VDF-Prover/golang/ && /usr/local/go/bin/go mod tidy
+
 
 install-dependency: install-go install-go-dependency
 	@echo "All dependencies have been installed."
+    @echo "Use the following lines to add the go path"
+    @echo "export PATH=$$PATH:/usr/local/go/bin >> ~/.bashrc"
+    @echo "source ~/.bashrc"
