@@ -29,5 +29,5 @@ install-go-dependency:
 install-dependency: install-go install-go-dependency
 	@echo "All dependencies have been installed."
 	@echo "Use the following lines to add the go path"
-	@echo "export PATH=$$PATH:/usr/local/go/bin >> ~/.bashrc"
+	@echo "export PATH=$PATH:/usr/local/go/bin >> ~/.bashrc"
 	@echo "source ~/.bashrc"
