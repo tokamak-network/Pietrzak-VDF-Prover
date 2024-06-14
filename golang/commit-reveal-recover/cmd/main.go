@@ -68,7 +68,7 @@ func main() {
 
 	// Test Recover Phase
 	start5 := time.Now()
-	omegaRecov, proofListRecovery := crr.Recover(N, T, c, bStar)
+	omegaRecov, proofListRecovery := crr.Recover(N, T, c)
 	fmt.Println("\nomegaRecov: ", omegaRecov)
 	//fmt.Println("\nproofListRecovery: ", proofListRecovery)
 

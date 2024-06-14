@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/cheggaaa/pb/v3"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -27,14 +26,18 @@ import (
 	"time"
 )
 
+type ListenerInterface interface {
+	SubscribeRandomWordsRequested() error
+}
+
 type Listener struct {
 	Client          *ethclient.Client
 	ContractAddress common.Address
 	ContractABI     abi.ABI
 	EventData       []EventInfo
 	PrivateKey      *ecdsa.PrivateKey
-	CommitStarted   bool
 	Mutex           sync.Mutex
+	WaitGroup       sync.WaitGroup
 }
 
 type EventInfo struct {
@@ -48,23 +51,20 @@ type BigNumber struct {
 }
 
 type ValueAtRound struct {
-	StartTime         *big.Int       `json:"startTime"`
-	NumOfParticipants *big.Int       `json:"numOfParticipants"`
-	Count             *big.Int       `json:"count"`
-	Consumer          common.Address `json:"consumer"`
-	BStar             []byte         `json:"bStar"`
-	CommitsString     []byte         `json:"commitsString"`
-	Omega             BigNumber      `json:"omega"`
-	Stage             string         `json:"stage"`
-	IsCompleted       bool           `json:"isCompleted"`
-	IsAllRevealed     bool           `json:"isAllRevealed"`
-	T                 *big.Int       `json:"T"`
-	NBitLen           *big.Int       `json:"nBitLen"`
-	GBitLen           *big.Int       `json:"gBitLen"`
-	HBitLen           *big.Int       `json:"hBitLen"`
-	NVal              []byte         `json:"nVal"`
-	GVal              []byte         `json:"gVal"`
-	HVal              []byte         `json:"hVal"`
+	StartTime     *big.Int       `json:"startTime"`
+	CommitCounts  *big.Int       `json:"commitCounts"`
+	Consumer      common.Address `json:"consumer"`
+	CommitsString []byte         `json:"commitsString"`
+	Omega         BigNumber      `json:"omega"`
+	Stage         string         `json:"stage"`
+	IsCompleted   bool           `json:"isCompleted"`
+	T             *big.Int       `json:"T"`
+	NBitLen       *big.Int       `json:"nBitLen"`
+	GBitLen       *big.Int       `json:"gBitLen"`
+	HBitLen       *big.Int       `json:"hBitLen"`
+	NVal          []byte         `json:"nVal"`
+	GVal          []byte         `json:"gVal"`
+	HVal          []byte         `json:"hVal"`
 }
 
 type SetupValues struct {
@@ -78,10 +78,9 @@ type SetupValues struct {
 	Stage   string
 }
 
-type CommitRevealData struct {
-	C                  BigNumber
-	A                  BigNumber
-	ParticipantAddress common.Address
+type CommitValue struct {
+	Commit          BigNumber      `json:"commit"`
+	OperatorAddress common.Address `json:"operatorAddress"`
 }
 
 func loadContractABI(filename string) (abi.ABI, error) {
@@ -136,7 +135,7 @@ func NewListener(config Config) (*Listener, error) {
 	}, nil
 }
 
-func (l *Listener) SubscribeRandomWordsRequested() {
+func (l *Listener) SubscribeRandomWordsRequested() error {
 	var round *big.Int
 	query := ethereum.FilterQuery{
 		Addresses: []common.Address{l.ContractAddress},
@@ -145,7 +144,7 @@ func (l *Listener) SubscribeRandomWordsRequested() {
 	logs := make(chan types.Log)
 	sub, err := l.Client.SubscribeFilterLogs(context.Background(), query, logs)
 	if err != nil {
-		log.Fatalf("Failed to subscribe to logs: %v", err)
+		return fmt.Errorf("failed to subscribe to logs: %w", err)
 	}
 
 	processedRounds := make(map[string]bool)
@@ -156,30 +155,28 @@ func (l *Listener) SubscribeRandomWordsRequested() {
 	for {
 		select {
 		case err := <-sub.Err():
-			log.Fatal(err)
+			return err
 		case vLog := <-logs:
-			if l.CommitStarted {
-				continue // Ignore events if a commit is in progress
-			}
-
 			event := EventInfo{}
-			l.ContractABI.UnpackIntoInterface(&event, "RandomWordsRequested", vLog.Data)
+			err := l.ContractABI.UnpackIntoInterface(&event, "RandomWordsRequested", vLog.Data)
+			if err != nil {
+				return err
+			}
 
 			round = event.Round
 			roundKey := round.String()
 
-			if _, exists := processedRounds[roundKey]; !exists && event.Round != nil && event.Round.Sign() >= 0 && event.Sender.Hex() != "0x0000000000000000000000000000000000000040" {
+			if _, exists := processedRounds[roundKey]; !exists && event.Round != nil && event.Round.Sign() >= 0 && event.Sender.Hex() != "0x0000000000000000000000000000000000000040" && event.Sender.Hex() != "0x0000000000000000000000000000000000000080" {
 				fmt.Println("------------------------------------------------------")
 				fmt.Printf("🔔 Round: %s, Sender: %s\n", round.String(), event.Sender.Hex())
 				l.EventData = append(l.EventData, event)
 				processedRounds[roundKey] = true
 
-				l.Mutex.Lock()
-				if !l.CommitStarted && l.checkAllEventsReceived() {
-					l.CommitStarted = true
-					go l.initiateCommitProcess(round)
-				}
-				l.Mutex.Unlock()
+				l.WaitGroup.Add(1)
+				go func(round *big.Int) {
+					defer l.WaitGroup.Done()
+					l.initiateCommitProcess(round)
+				}(round)
 			}
 		}
 	}
@@ -196,19 +193,13 @@ func (l *Listener) initiateCommitProcess(round *big.Int) {
 	}
 
 	// Start countdown after commit is successful
-	go func() {
+	go func(round *big.Int) {
 		countdown := 120
-		bar := pb.StartNew(countdown)
 		for i := 0; i < countdown; i++ {
-			bar.Increment()
+			fmt.Printf("[Commit Phase] Round %s - Countdown: %d seconds remaining\n", round.String(), countdown-i)
 			time.Sleep(1 * time.Second)
 		}
-		bar.Finish()
-		fmt.Println("🕒 Countdown completed. Proceeding to the next step.")
-
-		l.Mutex.Lock()
-		l.CommitStarted = false
-		l.Mutex.Unlock()
+		fmt.Printf("🕒 Round %s Countdown completed. Proceeding to the next step.\n", round.String())
 
 		time.Sleep(10 * time.Second)
 
@@ -217,7 +208,7 @@ func (l *Listener) initiateCommitProcess(round *big.Int) {
 
 		util.StartSpinner("Waiting for Recover...", 5)
 		l.AutoRecover(recoveryCtx, round)
-	}()
+	}(round)
 }
 
 // Check if all expected events for the round are received
@@ -252,9 +243,8 @@ func (l *Listener) Commit(ctx context.Context, round *big.Int) error {
 		return fmt.Errorf("failed to suggest gas price: %v", err)
 	}
 	auth.GasPrice = gasPrice
-	//fmt.Println("Gas Price:", auth.GasPrice)
 
-	randomData := make([]byte, 256)
+	randomData := make([]byte, 32)
 	if _, err := rand.Read(randomData); err != nil {
 		return fmt.Errorf("failed to generate random data: %v", err)
 	}
@@ -264,12 +254,14 @@ func (l *Listener) Commit(ctx context.Context, round *big.Int) error {
 	if err != nil {
 		return fmt.Errorf("failed to decode hex data: %v", err)
 	}
+	byteDataBigInt := new(big.Int).SetBytes(byteData)
+
 	commitData := struct {
 		Val    []byte
 		Bitlen *big.Int
 	}{
 		Val:    byteData,
-		Bitlen: big.NewInt(2048),
+		Bitlen: big.NewInt(int64(byteDataBigInt.BitLen())),
 	}
 
 	packedData, err := l.ContractABI.Pack("commit", round, commitData)
@@ -294,7 +286,7 @@ func (l *Listener) Commit(ctx context.Context, round *big.Int) error {
 
 func (l *Listener) GetNextRound() (*big.Int, error) {
 	config := LoadConfig()
-	client, err := ethclient.Dial(config.HttpURL)
+	client, err := ethclient.Dial(config.RpcURL)
 	if err != nil {
 		log.Fatalf("Failed to connect to the Ethereum client: %v", err)
 	}
@@ -311,62 +303,7 @@ func (l *Listener) GetNextRound() (*big.Int, error) {
 		return nil, fmt.Errorf("failed to retrieve the next round: %v", err)
 	}
 
-	//fmt.Printf("Next Round: %s\n", nextRound.String())
 	return nextRound, nil
-}
-
-func (l *Listener) GetValuesAtRound(ctx context.Context, round *big.Int) (*ValueAtRound, error) {
-	config := LoadConfig()
-	client, err := ethclient.Dial(config.RpcURL)
-	if err != nil {
-		log.Fatalf("Failed to connect to the Ethereum client: %v", err)
-	}
-	defer client.Close()
-
-	contractAddress := common.HexToAddress(config.ContractAddress)
-	instance, err := crrrng.NewCrrrng(contractAddress, client)
-	if err != nil {
-		log.Fatalf("Failed to create the contract instance: %v", err)
-	}
-
-	opts := &bind.CallOpts{Context: ctx}
-	rawResult, err := instance.GetValuesAtRound(opts, round)
-	if err != nil {
-		log.Fatalf("Failed to retrieve values at round: %v", err)
-	}
-
-	setupValues, err := GetSetupValues(ctx)
-	if err != nil {
-		log.Fatalf("Failed to retrieve setup values: %v", err)
-	}
-
-	result := &ValueAtRound{
-		StartTime:         rawResult.StartTime,
-		NumOfParticipants: rawResult.NumOfPariticipants,
-		Count:             rawResult.Count,
-		Consumer:          rawResult.Consumer,
-		BStar:             rawResult.BStar,
-		CommitsString:     rawResult.CommitsString,
-		Omega:             BigNumber{rawResult.Omega.Val, rawResult.Omega.Bitlen},
-		Stage:             GetStage(rawResult.Stage),
-		IsCompleted:       rawResult.IsCompleted,
-		IsAllRevealed:     rawResult.IsAllRevealed,
-		T:                 setupValues.T,
-		NBitLen:           setupValues.NBitLen,
-		GBitLen:           setupValues.GBitLen,
-		HBitLen:           setupValues.HBitLen,
-		NVal:              setupValues.NVal,
-		GVal:              setupValues.GVal,
-		HVal:              setupValues.HVal,
-	}
-
-	//jsonResult, err := json.Marshal(result)
-	//if err != nil {
-	//	log.Fatalf("Failed to marshal result to JSON: %v", err)
-	//}
-
-	//fmt.Printf("Values at Round %s: %s\n", round.String(), jsonResult)
-	return result, nil
 }
 
 func GetSetupValues(ctx context.Context) (*SetupValues, error) {
@@ -403,7 +340,53 @@ func GetSetupValues(ctx context.Context) (*SetupValues, error) {
 	return result, nil
 }
 
-func GetCommitRevealValues(ctx context.Context, round *big.Int) (*CommitRevealData, error) {
+func (l *Listener) GetValuesAtRound(ctx context.Context, round *big.Int) (*ValueAtRound, error) {
+	config := LoadConfig()
+	client, err := ethclient.Dial(config.RpcURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to the Ethereum client: %v", err)
+	}
+	defer client.Close()
+
+	contractAddress := common.HexToAddress(config.ContractAddress)
+	instance, err := crrrng.NewCrrrng(contractAddress, client)
+	if err != nil {
+		log.Fatalf("Failed to create the contract instance: %v", err)
+	}
+
+	opts := &bind.CallOpts{Context: ctx}
+	rawResult, err := instance.GetValuesAtRound(opts, round)
+	if err != nil {
+		log.Fatalf("Failed to retrieve values at round: %v", err)
+	}
+
+	setupValues, err := GetSetupValues(ctx)
+	if err != nil {
+		log.Fatalf("Failed to retrieve setup values: %v", err)
+	}
+
+	result := &ValueAtRound{
+		StartTime:     rawResult.StartTime,
+		CommitCounts:  rawResult.CommitCounts,
+		Consumer:      rawResult.Consumer,
+		CommitsString: rawResult.CommitsString,
+		Omega:         BigNumber{rawResult.Omega.Val, rawResult.Omega.Bitlen},
+		Stage:         GetStage(rawResult.Stage),
+		IsCompleted:   rawResult.IsCompleted,
+		T:             setupValues.T,
+		NBitLen:       setupValues.NBitLen,
+		GBitLen:       setupValues.GBitLen,
+		HBitLen:       setupValues.HBitLen,
+		NVal:          setupValues.NVal,
+		GVal:          setupValues.GVal,
+		HVal:          setupValues.HVal,
+	}
+
+	//fmt.Printf("GET Values: %+v\n", result)
+	return result, nil
+}
+
+func GetCommitValue(ctx context.Context, round *big.Int, totalCommits int64) ([]*CommitValue, error) {
 	config := LoadConfig()
 	client, err := ethclient.Dial(config.RpcURL)
 	if err != nil {
@@ -418,25 +401,26 @@ func GetCommitRevealValues(ctx context.Context, round *big.Int) (*CommitRevealDa
 	}
 
 	opts := &bind.CallOpts{Context: ctx}
-	index := big.NewInt(0)
-	value, err := instance.GetCommitRevealValues(opts, round, index)
-	if err != nil {
-		return nil, err
-	}
+	commitValues := make([]*CommitValue, 0, totalCommits)
 
-	result := &CommitRevealData{
-		C: BigNumber{
-			Val:    value.C.Val,
-			Bitlen: value.C.Bitlen,
-		},
-		A: BigNumber{
-			Val:    value.A.Val,
-			Bitlen: value.A.Bitlen,
-		},
-		ParticipantAddress: value.ParticipantAddress,
-	}
+	for i := int64(0); i < totalCommits; i++ {
+		index := big.NewInt(i)
+		value, err := instance.GetCommitValue(opts, round, index)
+		if err != nil {
+			return nil, err
+		}
 
-	return result, nil
+		commitValue := &CommitValue{
+			Commit: BigNumber{
+				Val:    value.Commit.Val,
+				Bitlen: value.Commit.Bitlen,
+			},
+			OperatorAddress: value.OperatorAddress,
+		}
+		commitValues = append(commitValues, commitValue)
+	}
+	fmt.Println("commitValue: ", commitValues)
+	return commitValues, nil
 }
 
 func GetStage(stageValue uint8) string {
@@ -451,20 +435,6 @@ func (b BigNumber) ToBigInt() *big.Int {
 	return new(big.Int).SetBytes(b.Val)
 }
 
-func calculateDeltaBytes(delta int) []byte {
-	twoPowerOfDelta := new(big.Int).Exp(big.NewInt(2), big.NewInt(int64(delta)), nil)
-	deltaBytes := twoPowerOfDelta.Bytes()
-	targetLength := 32 // 32 bytes, 256 bits
-
-	if len(deltaBytes) < targetLength {
-		zeroPadLength := targetLength - len(deltaBytes)
-		zeroPad := make([]byte, zeroPadLength)
-		deltaBytes = append(zeroPad, deltaBytes...)
-	}
-
-	return deltaBytes
-}
-
 func (l *Listener) AutoRecover(ctx context.Context, round *big.Int) error {
 	style := color.New(color.FgHiBlue, color.Bold)
 	style.Println("Preparing to execute recovery process...")
@@ -474,27 +444,25 @@ func (l *Listener) AutoRecover(ctx context.Context, round *big.Int) error {
 		log.Printf("Error retrieving values at round: %v", err)
 		return err
 	}
-	//fmt.Printf("valuesAtRound: %+v\n", valuesAtRound)
 
-	commitData, err := GetCommitRevealValues(ctx, round)
+	commitDataList, err := GetCommitValue(ctx, round, valuesAtRound.CommitCounts.Int64())
 	if err != nil {
 		log.Printf("Error retrieving commit-reveal data: %v", err)
 		return err
 	}
-	//fmt.Printf("Commit Data: %+v\n", commitData)
 
 	var commits []*big.Int
-	if commitData.C.Val != nil {
-		commits = append(commits, commitData.C.ToBigInt())
+	for _, commitData := range commitDataList {
+		if commitData.Commit.Val != nil {
+			commits = append(commits, commitData.Commit.ToBigInt())
+		}
 	}
 
 	n := new(big.Int).SetBytes(valuesAtRound.NVal)
-	bStar := new(big.Int).SetBytes(valuesAtRound.BStar)
 	T := int(valuesAtRound.T.Int64())
 
-	omegaRecov, proofListRecovery := crr.Recover(n, T, commits, bStar)
+	omegaRecov, proofListRecovery := crr.Recover(n, T, commits)
 	fmt.Printf("[+] Recovered random: %s\n", omegaRecov.String())
-	//fmt.Println("Proof List:", proofListRecovery)
 
 	if len(proofListRecovery) == 0 {
 		return fmt.Errorf("proofListRecovery is empty")
@@ -502,25 +470,23 @@ func (l *Listener) AutoRecover(ctx context.Context, round *big.Int) error {
 
 	x := BigNumber{
 		Val:    proofListRecovery[0].X.Bytes(),
-		Bitlen: big.NewInt(int64(len(proofListRecovery[0].X.Bytes()) * 8)),
+		Bitlen: big.NewInt(int64(proofListRecovery[0].X.BitLen())),
 	}
+
 	y := BigNumber{
 		Val:    proofListRecovery[0].Y.Bytes(),
-		Bitlen: big.NewInt(int64(len(proofListRecovery[0].Y.Bytes()) * 8)),
+		Bitlen: big.NewInt(int64(proofListRecovery[0].Y.BitLen())),
 	}
+
 	v := make([]BigNumber, len(proofListRecovery))
 	for i, proof := range proofListRecovery {
 		v[i] = BigNumber{
 			Val:    proof.V.Bytes(),
-			Bitlen: big.NewInt(int64(len(proof.V.Bytes()) * 8)),
+			Bitlen: big.NewInt(int64(proof.V.BitLen())),
 		}
 	}
-	//fmt.Printf("Data being packed: %+v\n", v)
 
-	delta := 9
-	twoPowerOfDeltaBytes := calculateDeltaBytes(delta)
-
-	err = l.Recover(ctx, round, v, &x, &y, twoPowerOfDeltaBytes, big.NewInt(int64(delta)))
+	err = l.Recover(ctx, round, v, x, y)
 	if err != nil {
 		log.Printf("Failed to execute recovery process: %v", err)
 		return err
@@ -529,7 +495,7 @@ func (l *Listener) AutoRecover(ctx context.Context, round *big.Int) error {
 	return nil
 }
 
-func (l *Listener) Recover(ctx context.Context, round *big.Int, v []BigNumber, x *BigNumber, y *BigNumber, twoPowerOfDeltaBytes []byte, delta *big.Int) error {
+func (l *Listener) Recover(ctx context.Context, round *big.Int, v []BigNumber, x BigNumber, y BigNumber) error {
 	chainID, err := l.Client.NetworkID(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to fetch network ID: %v", err)
@@ -550,12 +516,12 @@ func (l *Listener) Recover(ctx context.Context, round *big.Int, v []BigNumber, x
 		return fmt.Errorf("failed to suggest gas price: %v", err)
 	}
 
-	packedData, err := l.ContractABI.Pack("recover", round, v, x, y, twoPowerOfDeltaBytes, delta)
+	packedData, err := l.ContractABI.Pack("recover", round, v, x, y)
 	if err != nil {
 		return fmt.Errorf("failed to pack data for recovery: %v", err)
 	}
 
-	tx := types.NewTransaction(auth.Nonce.Uint64(), l.ContractAddress, nil, 4000000, auth.GasPrice, packedData)
+	tx := types.NewTransaction(auth.Nonce.Uint64(), l.ContractAddress, nil, 6000000, auth.GasPrice, packedData)
 	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), l.PrivateKey)
 	if err != nil {
 		return fmt.Errorf("failed to sign the transaction: %v", err)

@@ -14,12 +14,22 @@
         },
         {
           "internalType": "uint256",
-          "name": "avgRecoveOverhead",
+          "name": "avgL2GasUsed",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "avgL1GasUsed",
           "type": "uint256"
         },
         {
           "internalType": "uint256",
           "name": "premiumPercentage",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "penaltyPercentage",
           "type": "uint256"
         },
         {
@@ -39,6 +49,11 @@
     {
       "inputs": [],
       "name": "AlreadyLeader",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "AlreadySucceeded",
       "type": "error"
     },
     {
@@ -63,12 +78,22 @@
     },
     {
       "inputs": [],
+      "name": "CommitNotStarted",
+      "type": "error"
+    },
+    {
+      "inputs": [],
       "name": "DisputePeriodEnded",
       "type": "error"
     },
     {
       "inputs": [],
       "name": "DisputePeriodNotEnded",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "DisputePeriodNotEndedOrStarted",
       "type": "error"
     },
     {
@@ -88,12 +113,12 @@
     },
     {
       "inputs": [],
-      "name": "InvalidProofsLength",
+      "name": "NotCommittedParticipant",
       "type": "error"
     },
     {
       "inputs": [],
-      "name": "NotCommittedParticipant",
+      "name": "NotConsumer",
       "type": "error"
     },
     {
@@ -104,6 +129,11 @@
     {
       "inputs": [],
       "name": "NotEnoughParticipated",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "NotFulfilledExecuted",
       "type": "error"
     },
     {
@@ -160,6 +190,11 @@
     },
     {
       "inputs": [],
+      "name": "PreviousRoundNotRecovered",
+      "type": "error"
+    },
+    {
+      "inputs": [],
       "name": "RecovNotMatchX",
       "type": "error"
     },
@@ -185,54 +220,18 @@
     },
     {
       "inputs": [],
-      "name": "TOneNotAtLast",
+      "name": "SubmittedSameOmega",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "TooEarlyToRefund",
       "type": "error"
     },
     {
       "inputs": [],
       "name": "TwoOrMoreCommittedPleaseRecover",
       "type": "error"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "index",
-          "type": "uint256"
-        }
-      ],
-      "name": "XPrimeNotEqualAtIndex",
-      "type": "error"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "index",
-          "type": "uint256"
-        }
-      ],
-      "name": "YPrimeNotEqualAtIndex",
-      "type": "error"
-    },
-    {
-      "anonymous": false,
-      "inputs": [
-        {
-          "indexed": false,
-          "internalType": "uint256",
-          "name": "round",
-          "type": "uint256"
-        },
-        {
-          "indexed": false,
-          "internalType": "bytes",
-          "name": "omega",
-          "type": "bytes"
-        }
-      ],
-      "name": "CalculateOmega",
-      "type": "event"
     },
     {
       "anonymous": false,
@@ -251,6 +250,37 @@
         }
       ],
       "name": "CommitC",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "round",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "hashedOmega",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "bool",
+          "name": "success",
+          "type": "bool"
+        },
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "leader",
+          "type": "address"
+        }
+      ],
+      "name": "FulfillRandomness",
       "type": "event"
     },
     {
@@ -303,20 +333,8 @@
         {
           "indexed": false,
           "internalType": "bytes",
-          "name": "recov",
-          "type": "bytes"
-        },
-        {
-          "indexed": false,
-          "internalType": "bytes",
           "name": "omega",
           "type": "bytes"
-        },
-        {
-          "indexed": false,
-          "internalType": "bool",
-          "name": "success",
-          "type": "bool"
         }
       ],
       "name": "Recovered",
@@ -387,6 +405,70 @@
     {
       "inputs": [
         {
+          "internalType": "uint256",
+          "name": "round",
+          "type": "uint256"
+        },
+        {
+          "components": [
+            {
+              "internalType": "bytes",
+              "name": "val",
+              "type": "bytes"
+            },
+            {
+              "internalType": "uint256",
+              "name": "bitlen",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct BigNumber[]",
+          "name": "v",
+          "type": "tuple[]"
+        },
+        {
+          "components": [
+            {
+              "internalType": "bytes",
+              "name": "val",
+              "type": "bytes"
+            },
+            {
+              "internalType": "uint256",
+              "name": "bitlen",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct BigNumber",
+          "name": "x",
+          "type": "tuple"
+        },
+        {
+          "components": [
+            {
+              "internalType": "bytes",
+              "name": "val",
+              "type": "bytes"
+            },
+            {
+              "internalType": "uint256",
+              "name": "bitlen",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct BigNumber",
+          "name": "y",
+          "type": "tuple"
+        }
+      ],
+      "name": "disputeRecover",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
           "internalType": "uint32",
           "name": "_callbackGasLimit",
           "type": "uint32"
@@ -406,6 +488,32 @@
         }
       ],
       "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "round",
+          "type": "uint256"
+        }
+      ],
+      "name": "fulfillRandomness",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "round",
+          "type": "uint256"
+        }
+      ],
+      "name": "fulfillRandomnessOfFailed",
+      "outputs": [],
+      "stateMutability": "nonpayable",
       "type": "function"
     },
     {
@@ -448,9 +556,47 @@
               "type": "address"
             }
           ],
-          "internalType": "struct VDFCRRNG.CommitValue",
+          "internalType": "struct VDFCRRNGPoF.CommitValue",
           "name": "",
           "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "round",
+          "type": "uint256"
+        }
+      ],
+      "name": "getCommittedOperatorsAtRound",
+      "outputs": [
+        {
+          "internalType": "address[]",
+          "name": "",
+          "type": "address[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "round",
+          "type": "uint256"
+        }
+      ],
+      "name": "getConsumerAtRound",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
         }
       ],
       "stateMutability": "view",
@@ -497,30 +643,6 @@
     {
       "inputs": [
         {
-          "internalType": "address",
-          "name": "operator",
-          "type": "address"
-        }
-      ],
-      "name": "getDisputeEndTimeAndIncentiveOfOperator",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
           "internalType": "uint256",
           "name": "round",
           "type": "uint256"
@@ -543,6 +665,102 @@
       "type": "function"
     },
     {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "operator",
+          "type": "address"
+        }
+      ],
+      "name": "getDisputeEndTimeOfOperator",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "getDisputePeriod",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "getFeeSettings",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "round",
+          "type": "uint256"
+        }
+      ],
+      "name": "getFulfillStatusAtRound",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "bool",
+              "name": "executed",
+              "type": "bool"
+            },
+            {
+              "internalType": "bool",
+              "name": "succeeded",
+              "type": "bool"
+            }
+          ],
+          "internalType": "struct VDFCRRNGPoF.FulfillStatus",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
       "inputs": [],
       "name": "getMinimumDepositAmount",
       "outputs": [
@@ -558,6 +776,19 @@
     {
       "inputs": [],
       "name": "getNextRound",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "getOperatorCount",
       "outputs": [
         {
           "internalType": "uint256",
@@ -639,7 +870,7 @@
               "type": "bool"
             }
           ],
-          "internalType": "struct VDFCRRNG.OperatorStatusAtRound",
+          "internalType": "struct VDFCRRNGPoF.OperatorStatusAtRound",
           "name": "",
           "type": "tuple"
         }
@@ -662,6 +893,11 @@
             {
               "internalType": "uint256",
               "name": "startTime",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "requestedTime",
               "type": "uint256"
             },
             {
@@ -697,7 +933,7 @@
               "type": "tuple"
             },
             {
-              "internalType": "enum VDFCRRNG.Stages",
+              "internalType": "enum VDFCRRNGPoF.Stages",
               "name": "stage",
               "type": "uint8"
             },
@@ -705,9 +941,14 @@
               "internalType": "bool",
               "name": "isCompleted",
               "type": "bool"
+            },
+            {
+              "internalType": "bool",
+              "name": "isVerified",
+              "type": "bool"
             }
           ],
-          "internalType": "struct VDFCRRNG.ValueAtRound",
+          "internalType": "struct VDFCRRNGPoF.ValueAtRound",
           "name": "",
           "type": "tuple"
         }
@@ -776,6 +1017,38 @@
     },
     {
       "inputs": [],
+      "name": "isInitialized",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "operator",
+          "type": "address"
+        }
+      ],
+      "name": "isOperator",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "operatorDeposit",
       "outputs": [],
       "stateMutability": "payable",
@@ -840,46 +1113,25 @@
               "type": "uint256"
             }
           ],
-          "internalType": "struct BigNumber[]",
-          "name": "v",
-          "type": "tuple[]"
-        },
-        {
-          "components": [
-            {
-              "internalType": "bytes",
-              "name": "val",
-              "type": "bytes"
-            },
-            {
-              "internalType": "uint256",
-              "name": "bitlen",
-              "type": "uint256"
-            }
-          ],
-          "internalType": "struct BigNumber",
-          "name": "x",
-          "type": "tuple"
-        },
-        {
-          "components": [
-            {
-              "internalType": "bytes",
-              "name": "val",
-              "type": "bytes"
-            },
-            {
-              "internalType": "uint256",
-              "name": "bitlen",
-              "type": "uint256"
-            }
-          ],
           "internalType": "struct BigNumber",
           "name": "y",
           "type": "tuple"
         }
       ],
       "name": "recover",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "round",
+          "type": "uint256"
+        }
+      ],
+      "name": "refundAtRound",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
@@ -924,7 +1176,12 @@
         },
         {
           "internalType": "uint256",
-          "name": "avgRecoveOverhead",
+          "name": "avgL2GasUsed",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "avgL1GasUsed",
           "type": "uint256"
         },
         {
