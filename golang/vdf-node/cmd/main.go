@@ -1,9 +1,12 @@
 package main
 
 import (
+	"flag"
 	"github.com/fatih/color"
 	"github.com/gorilla/websocket"
 	"github.com/tokamak-network/Pietrzak-VDF-Prover/golang/vdf-node/node"
+	nodePoF "github.com/tokamak-network/Pietrzak-VDF-Prover/golang/vdf-node/node-pof"
+	nodeTest "github.com/tokamak-network/Pietrzak-VDF-Prover/golang/vdf-node/node-test"
 	"github.com/tokamak-network/Pietrzak-VDF-Prover/golang/vdf-node/util"
 	"log"
 	"time"
@@ -11,29 +14,56 @@ import (
 
 func main() {
 	printLogo()
-	color.New(color.FgHiCyan, color.Bold).Println("Starting VDF Node...")
+
+	pofMode := flag.Bool("pof", false, "Activate Proof of Flow mode")
+	testMode := flag.Bool("test", false, "Activate Test mode")
+	flag.Parse()
+
+	if *pofMode {
+		color.New(color.FgHiCyan, color.Bold).Println("Starting VDF Node in PoF mode...")
+	}
+
+	if *testMode {
+		color.New(color.FgHiCyan, color.Bold).Println("Starting VDF Node in Test mode...")
+	}
 
 	util.StartSpinner("Configuring system...", 5)
-	config := node.LoadConfig()
+
+	var config node.Config
+	if *pofMode {
+		config = node.LoadConfigPoF()
+	} else {
+		config = node.LoadConfig()
+	}
+
+	if *testMode {
+		config = node.LoadConfigTest()
+	}
 	color.New(color.FgHiGreen, color.Bold).Println("Configuration loaded successfully. Ready to operate.")
 
-	for {
-		util.StartSpinner("Initializing listener...", 3)
-		listener, err := node.NewListener(config)
+	var listener node.ListenerInterface
+	var err error
 
-		if err != nil {
-			log.Fatalf("Listener initialization failed: %v", err)
-		}
-		color.New(color.FgHiGreen, color.Bold).Println("Listener is now active and ready.")
-
-		// Start a goroutine to handle reconnection
-		go handleConnection(listener)
-
-		select {} // Maintain the service running
+	if *pofMode {
+		listener, err = nodePoF.NewPoFListener(config)
 	}
+
+	if *testMode {
+		listener, err = nodeTest.NewTestListener(config)
+	}
+
+	if err != nil {
+		log.Fatalf("Listener initialization failed: %v", err)
+	}
+
+	color.New(color.FgHiGreen, color.Bold).Println("Listener is now active and ready.")
+
+	go handleConnection(listener)
+
+	select {}
 }
 
-func handleConnection(listener *node.Listener) {
+func handleConnection(listener node.ListenerInterface) {
 	for {
 		err := listener.SubscribeRandomWordsRequested()
 		if err != nil {

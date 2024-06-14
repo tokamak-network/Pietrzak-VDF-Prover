@@ -26,6 +26,10 @@ import (
 	"time"
 )
 
+type ListenerInterface interface {
+	SubscribeRandomWordsRequested() error
+}
+
 type Listener struct {
 	Client          *ethclient.Client
 	ContractAddress common.Address
@@ -154,7 +158,10 @@ func (l *Listener) SubscribeRandomWordsRequested() error {
 			return err
 		case vLog := <-logs:
 			event := EventInfo{}
-			l.ContractABI.UnpackIntoInterface(&event, "RandomWordsRequested", vLog.Data)
+			err := l.ContractABI.UnpackIntoInterface(&event, "RandomWordsRequested", vLog.Data)
+			if err != nil {
+				return err
+			}
 
 			round = event.Round
 			roundKey := round.String()
@@ -189,7 +196,7 @@ func (l *Listener) initiateCommitProcess(round *big.Int) {
 	go func(round *big.Int) {
 		countdown := 120
 		for i := 0; i < countdown; i++ {
-			fmt.Printf("Round %s Countdown: %d seconds remaining\n", round.String(), countdown-i)
+			fmt.Printf("[Commit Phase] Round %s - Countdown: %d seconds remaining\n", round.String(), countdown-i)
 			time.Sleep(1 * time.Second)
 		}
 		fmt.Printf("🕒 Round %s Countdown completed. Proceeding to the next step.\n", round.String())
