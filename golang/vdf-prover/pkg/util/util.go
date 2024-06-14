@@ -34,7 +34,7 @@ func CalExp(N, x *big.Int, T int) *big.Int {
 	// Now calculate x^(2^T) mod N
 	result := new(big.Int).Exp(x, expT, N)
 
-	fmt.Printf("CalExp 실행 시간: %s\n", time.Since(startTime))
+	fmt.Printf("CalExp run time: %s\n", time.Since(startTime))
 	return result
 }
 
@@ -54,7 +54,7 @@ func GetExp(expList []*big.Int, exp, N *big.Int) *big.Int {
 		i++
 	}
 
-	fmt.Printf("GetExp 실행 시간: %s\n", time.Since(startTime))
+	fmt.Printf("GetExp run time: %s\n", time.Since(startTime))
 	return res
 }
 
