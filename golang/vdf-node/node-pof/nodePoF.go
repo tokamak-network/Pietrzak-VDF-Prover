@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/fatih/color"
+	client "github.com/influxdata/influxdb1-client/v2"
 	"github.com/tokamak-network/Pietrzak-VDF-Prover/golang/commit-reveal-recover/crr"
 	"github.com/tokamak-network/Pietrzak-VDF-Prover/golang/crrrngpof"
 	"github.com/tokamak-network/Pietrzak-VDF-Prover/golang/vdf-node/node"
@@ -765,7 +766,7 @@ func (l *PoFListener) SubscribeFulfillRandomness(ctx context.Context, round *big
 			event := struct {
 				Round       *big.Int
 				HashedOmega *big.Int
-				Success     bool
+				Success     client.BooleanValue
 				Leader      common.Address
 			}{}
 			err := l.ContractABI.UnpackIntoInterface(&event, "FulfillRandomness", vLog.Data)
