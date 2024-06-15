@@ -16,13 +16,13 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/fatih/color"
-	client "github.com/influxdata/influxdb1-client/v2"
 	"github.com/tokamak-network/Pietrzak-VDF-Prover/golang/commit-reveal-recover/crr"
 	"github.com/tokamak-network/Pietrzak-VDF-Prover/golang/crrrngpof"
 	"github.com/tokamak-network/Pietrzak-VDF-Prover/golang/vdf-node/node"
 	"io/ioutil"
 	"log"
 	"math/big"
+	"strings"
 	"sync"
 	"time"
 )
@@ -766,11 +766,14 @@ func (l *PoFListener) SubscribeFulfillRandomness(ctx context.Context, round *big
 			event := struct {
 				Round       *big.Int
 				HashedOmega *big.Int
-				Success     client.BooleanValue
+				Success     bool
 				Leader      common.Address
 			}{}
 			err := l.ContractABI.UnpackIntoInterface(&event, "FulfillRandomness", vLog.Data)
 			if err != nil {
+				if strings.Contains(err.Error(), "abi: improperly encoded boolean value") {
+					continue
+				}
 				log.Printf("Error unpacking FulfillRandomness event: %v", err)
 				continue
 			}
