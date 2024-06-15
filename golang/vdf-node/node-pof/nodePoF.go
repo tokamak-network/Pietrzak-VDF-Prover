@@ -557,7 +557,7 @@ func (l *PoFListener) AutoRecover(ctx context.Context, round *big.Int, mySender 
 		}
 
 		if time.Now().After(recoverTime) {
-			time.Sleep(60 * time.Second)
+			time.Sleep(CommitDuration * time.Second)
 			err = l.Recover(ctx, round, y)
 			if err != nil {
 				log.Printf("Failed to execute recovery process: %v", err)
@@ -794,9 +794,6 @@ func (l *PoFListener) SubscribeFulfillRandomness(ctx context.Context, round *big
 			}
 
 			processedEvents[eventKey] = true // Mark this event as processed
-			sub.Unsubscribe()
-
-			return nil
 		}
 	}
 }
