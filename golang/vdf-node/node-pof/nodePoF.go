@@ -736,15 +736,11 @@ func (l *PoFListener) SubscribeRecovered(ctx context.Context, expectedOmega stri
 }
 
 func (l *PoFListener) SubscribeFulfillRandomness(ctx context.Context, round *big.Int, leader common.Address, minSender common.Address) error {
-	processedEvents := make(map[string]bool)
+	fulfillRandomnessTopic := []common.Hash{crypto.Keccak256Hash([]byte("FulfillRandomness(uint256,uint256,bool,address)"))}
 
 	query := ethereum.FilterQuery{
 		Addresses: []common.Address{l.ContractAddress},
-		Topics: [][]common.Hash{
-			{
-				l.ContractABI.Events["FulfillRandomness"].ID,
-			},
-		},
+		Topics:    [][]common.Hash{fulfillRandomnessTopic},
 	}
 
 	logs := make(chan types.Log)
@@ -761,11 +757,6 @@ func (l *PoFListener) SubscribeFulfillRandomness(ctx context.Context, round *big
 		case err := <-sub.Err():
 			return err
 		case vLog := <-logs:
-			eventKey := fmt.Sprintf("%d-%d", vLog.BlockNumber, vLog.Index) // Use %d for uint64 formatting
-			if processedEvents[eventKey] {
-				continue // Skip processing if the event has already been processed
-			}
-
 			event := struct {
 				Round       *big.Int
 				HashedOmega *big.Int
@@ -792,8 +783,6 @@ func (l *PoFListener) SubscribeFulfillRandomness(ctx context.Context, round *big
 				fmt.Println("---------------------------------------------------------------------------")
 				l.DisputeLeadershipAtRound(ctx, round)
 			}
-
-			processedEvents[eventKey] = true // Mark this event as processed
 		}
 	}
 }
