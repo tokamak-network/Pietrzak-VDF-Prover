@@ -30,15 +30,8 @@ func main() {
 	util.StartSpinner("Configuring system...", 5)
 
 	var config node.Config
-	if *pofMode {
-		config = node.LoadConfigPoF()
-	} else {
-		config = node.LoadConfig()
-	}
+	config = node.LoadConfig()
 
-	if *testMode {
-		config = node.LoadConfigTest()
-	}
 	color.New(color.FgHiGreen, color.Bold).Println("Configuration loaded successfully. Ready to operate.")
 
 	var listener node.ListenerInterface

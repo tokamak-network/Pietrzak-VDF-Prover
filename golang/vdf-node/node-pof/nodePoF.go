@@ -657,9 +657,9 @@ func (l *PoFListener) SubscribeRecovered(ctx context.Context, expectedOmega stri
 			return err
 		case vLog := <-logs:
 			event := struct {
-				Round  *big.Int
-				Omega  []byte
-				Sender common.Address
+				Round     *big.Int
+				Omega     []byte
+				Recoverer common.Address
 			}{}
 			err := l.ContractABI.UnpackIntoInterface(&event, "Recovered", vLog.Data)
 			if err != nil {

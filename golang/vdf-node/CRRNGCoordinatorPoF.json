@@ -332,6 +332,12 @@
         },
         {
           "indexed": false,
+          "internalType": "address",
+          "name": "recoverer",
+          "type": "address"
+        },
+        {
+          "indexed": false,
           "internalType": "bytes",
           "name": "omega",
           "type": "bytes"
