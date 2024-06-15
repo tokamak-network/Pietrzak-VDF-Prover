@@ -557,7 +557,7 @@ func (l *PoFListener) AutoRecover(ctx context.Context, round *big.Int, mySender 
 		}
 
 		if time.Now().After(recoverTime) {
-			time.Sleep(CommitDuration * time.Second)
+			time.Sleep(60 * time.Second)
 			err = l.Recover(ctx, round, y)
 			if err != nil {
 				log.Printf("Failed to execute recovery process: %v", err)
@@ -736,12 +736,15 @@ func (l *PoFListener) SubscribeRecovered(ctx context.Context, expectedOmega stri
 }
 
 func (l *PoFListener) SubscribeFulfillRandomness(ctx context.Context, round *big.Int, leader common.Address, minSender common.Address) error {
-	fulfillRandomnessTopic := []common.Hash{crypto.Keccak256Hash([]byte("FulfillRandomness(uint256,uint256,bool,address)"))}
 	processedEvents := make(map[string]bool)
 
 	query := ethereum.FilterQuery{
 		Addresses: []common.Address{l.ContractAddress},
-		Topics:    [][]common.Hash{fulfillRandomnessTopic},
+		Topics: [][]common.Hash{
+			{
+				l.ContractABI.Events["FulfillRandomness"].ID,
+			},
+		},
 	}
 
 	logs := make(chan types.Log)
@@ -791,6 +794,9 @@ func (l *PoFListener) SubscribeFulfillRandomness(ctx context.Context, round *big
 			}
 
 			processedEvents[eventKey] = true // Mark this event as processed
+			sub.Unsubscribe()
+
+			return nil
 		}
 	}
 }
