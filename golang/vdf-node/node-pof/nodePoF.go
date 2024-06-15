@@ -736,6 +736,7 @@ func (l *PoFListener) SubscribeRecovered(ctx context.Context, expectedOmega stri
 
 func (l *PoFListener) SubscribeFulfillRandomness(ctx context.Context, round *big.Int, leader common.Address, minSender common.Address) error {
 	fulfillRandomnessTopic := []common.Hash{crypto.Keccak256Hash([]byte("FulfillRandomness(uint256,uint256,bool,address)"))}
+	processedEvents := make(map[string]bool)
 
 	query := ethereum.FilterQuery{
 		Addresses: []common.Address{l.ContractAddress},
@@ -748,7 +749,6 @@ func (l *PoFListener) SubscribeFulfillRandomness(ctx context.Context, round *big
 		return fmt.Errorf("failed to subscribe to logs: %w", err)
 	}
 
-	//util.StartSpinner("🎧 Listening for 'FulfillRandomness' events...", 5)
 	fmt.Println("---------------------------------------------------------------------------")
 	fmt.Println("🎧 Listening for 'FulfillRandomness' events...")
 
@@ -757,6 +757,11 @@ func (l *PoFListener) SubscribeFulfillRandomness(ctx context.Context, round *big
 		case err := <-sub.Err():
 			return err
 		case vLog := <-logs:
+			eventKey := fmt.Sprintf("%d-%d", vLog.BlockNumber, vLog.Index) // Use %d for uint64 formatting
+			if processedEvents[eventKey] {
+				continue // Skip processing if the event has already been processed
+			}
+
 			event := struct {
 				Round       *big.Int
 				HashedOmega *big.Int
@@ -769,22 +774,19 @@ func (l *PoFListener) SubscribeFulfillRandomness(ctx context.Context, round *big
 				continue
 			}
 
-			hashedOmegaStr := event.HashedOmega.String()
-			fmt.Printf("🔔 FulfillRandomness Event - Round: %s, Hashed Omega: %s, Success: %t\n", event.Round.String(), hashedOmegaStr, event.Success)
+			fmt.Printf("🔔 FulfillRandomness Event - Round: %s, Hashed Omega: %s, Success: %t\n", event.Round.String(), event.HashedOmega.String(), event.Success)
 			fmt.Println("---------------------------------------------------------------------------")
-			color.New(color.FgHiRed, color.Bold).Println("DisputeLeadershipAtRound proceeding...")
 
 			if leader == minSender {
 				color.New(color.FgHiBlue, color.Bold).Println("The leader for round: ", event.Round.String(), " is ", minSender)
-				color.New(color.FgHiBlue, color.Bold).Println("This sender is the leader for round: ", event.Round.String())
 				color.New(color.FgHiBlue, color.Bold).Println("No dispute in leadership for round: ", event.Round.String(), " is needed.")
-				fmt.Println("---------------------------------------------------------------------------")
 			} else {
 				color.New(color.FgHiRed, color.Bold).Printf("The sender of this event is not the leader for round %s. The actual leader is %s.\n", event.Round.String(), l.LeaderRounds[event.Round].Hex())
 				fmt.Println("---------------------------------------------------------------------------")
-
 				l.DisputeLeadershipAtRound(ctx, round)
 			}
+
+			processedEvents[eventKey] = true // Mark this event as processed
 		}
 	}
 }
