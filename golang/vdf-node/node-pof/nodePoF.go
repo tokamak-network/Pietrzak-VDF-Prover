@@ -28,10 +28,16 @@ import (
 )
 
 const (
-	CommitDuration  = 120 // Commit duration in seconds
-	DisputeDuration = 200 // Dispute duration in seconds
-	ContextTimeout  = 600 // Context timeout duration in seconds
+	CommitDuration  = 120    // Commit duration in seconds
+	DisputeDuration = 200    // Dispute duration in seconds
+	ContextTimeout  = 600000 // Context timeout duration in seconds
 )
+
+type PoFListenerInterface interface {
+	SubscribeRandomWordsRequested() error
+	CheckRoundCondition() error
+	GetNextRound() (*big.Int, error)
+}
 
 type PoFListener struct {
 	Client          *ethclient.Client
