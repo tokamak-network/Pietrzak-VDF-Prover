@@ -28,6 +28,8 @@ import (
 
 type ListenerInterface interface {
 	SubscribeRandomWordsRequested() error
+	CheckRoundCondition() error
+	GetNextRound() (*big.Int, error)
 }
 
 type Listener struct {

@@ -6,11 +6,15 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/tokamak-network/Pietrzak-VDF-Prover/golang/vdf-node/node"
 	nodePoF "github.com/tokamak-network/Pietrzak-VDF-Prover/golang/vdf-node/node-pof"
-	nodeTest "github.com/tokamak-network/Pietrzak-VDF-Prover/golang/vdf-node/node-test"
 	"github.com/tokamak-network/Pietrzak-VDF-Prover/golang/vdf-node/util"
 	"log"
+	"math/big"
+	"os"
+	"sync"
 	"time"
 )
+
+var timeoutTimer *time.Timer // 타임아웃 타이머 전역 변수
 
 func main() {
 	printLogo()
@@ -37,16 +41,12 @@ func main() {
 
 	if *pofMode {
 		listener, err = nodePoF.NewPoFListener(config)
-		if err != nil {
-			log.Fatalf("Listener initialization failed in PoF mode: %v", err)
-		}
-	} else if *testMode {
-		listener, err = nodeTest.NewTestListener(config)
-		if err != nil {
-			log.Fatalf("Listener initialization failed in Test mode: %v", err)
-		}
 	} else {
 		log.Fatal("No mode selected, shutting down.")
+	}
+
+	if err != nil {
+		log.Fatalf("Listener initialization failed: %v", err)
 	}
 
 	if listener == nil {
@@ -56,10 +56,31 @@ func main() {
 	color.New(color.FgHiGreen, color.Bold).Println("Listener is now active and ready.")
 	go handleConnection(listener)
 
+	resetTimeout(5 * time.Minute)
+
 	select {}
 }
 
 func handleConnection(listener node.ListenerInterface) {
+	var wg sync.WaitGroup
+
+	nextRound, err := listener.GetNextRound()
+	if err != nil {
+		log.Fatalf("Error retrieving next round: %v", err)
+		return
+	}
+
+	currentRound := new(big.Int).Sub(nextRound, big.NewInt(1))
+	if currentRound.Cmp(big.NewInt(0)) > 0 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := listener.CheckRoundCondition(); err != nil {
+				log.Printf("Error during CheckRoundCondition: %v", err)
+			}
+		}()
+	}
+
 	for {
 		err := listener.SubscribeRandomWordsRequested()
 		if err != nil {
@@ -72,8 +93,18 @@ func handleConnection(listener node.ListenerInterface) {
 				log.Fatalf("Listener failed: %v", err)
 			}
 		}
-		break
+		resetTimeout(5 * time.Minute)
 	}
+}
+
+func resetTimeout(duration time.Duration) {
+	if timeoutTimer != nil {
+		timeoutTimer.Stop()
+	}
+	timeoutTimer = time.AfterFunc(duration, func() {
+		log.Println("No requests for 5 minutes, shutting down the application...")
+		os.Exit(0)
+	})
 }
 
 func printLogo() {

@@ -149,6 +149,102 @@ func NewPoFListener(config node.Config) (*PoFListener, error) {
 	}, nil
 }
 
+func (l *PoFListener) CheckRoundCondition() error {
+	nextRound, err := l.GetNextRound()
+	if err != nil {
+		log.Fatalf("Error retrieving next round: %v", err)
+		return nil
+	}
+
+	currentRound := new(big.Int).Sub(nextRound, big.NewInt(1))
+	if currentRound.Cmp(big.NewInt(0)) <= 0 {
+		log.Println("Current round is not valid for processing.")
+		return nil
+	}
+	log.Printf("Current round number is: %s", currentRound.String())
+
+	lastRecoveredRound, err := l.GetLastRecoveredRound()
+	if err != nil {
+		log.Fatalf("Error retrieving last recovered round: %v", err)
+		return nil
+	}
+	log.Printf("Last recovered round number is: %s", lastRecoveredRound.String())
+
+	lastFulfilledRound, err := l.GetLastFulfilledRound()
+	if err != nil {
+		log.Fatalf("Error retrieving last fulfilled round: %v", err)
+		return nil
+	}
+	log.Printf("Last fulfilled round number is: %s", lastFulfilledRound.String())
+
+	ctx, cancel := context.WithTimeout(context.Background(), ContextTimeout*time.Minute)
+	defer cancel()
+
+	for checkRound := new(big.Int).Set(lastRecoveredRound); checkRound.Cmp(currentRound) <= 0; checkRound.Add(checkRound, big.NewInt(1)) {
+		fmt.Println("Checking round: ", checkRound)
+
+		if lastRecoveredRound.Cmp(big.NewInt(0)) == 0 {
+			ctx, cancel := context.WithTimeout(context.Background(), ContextTimeout*time.Minute)
+			defer cancel()
+			valueAtRound, err := l.GetValuesAtRound(ctx, lastRecoveredRound)
+			if err != nil {
+				log.Printf("Error retrieving values at round 0: %v", err)
+				return err
+			}
+
+			startTimeInSeconds := valueAtRound.StartTime.Int64()
+			startTime := time.Unix(startTimeInSeconds, 0)
+			commitDeadline := startTime.Add(time.Second * time.Duration(CommitDuration))
+
+			if time.Now().After(commitDeadline) && !valueAtRound.IsCompleted {
+				log.Println("Round 0 is not fully recovered, initiating recovery process.")
+				l.ReRequestRandomWordAtRound(ctx, lastRecoveredRound)
+				l.initiateCommitProcess(lastRecoveredRound)
+			} else if !time.Now().After(commitDeadline) && !valueAtRound.IsCompleted {
+				l.initiateCommitProcess(lastRecoveredRound)
+			}
+
+			return nil
+		}
+
+		if lastRecoveredRound.Cmp(checkRound) == 0 {
+			fmt.Println("lastRecoveredRound: ", checkRound)
+			if lastFulfilledRound.Cmp(currentRound) == 0 {
+				log.Printf("Last fulfilled round %s matches current round %s, and matches last recovered round %s", lastFulfilledRound.String(), currentRound.String(), lastRecoveredRound.String())
+			} else {
+				// If they do not match, attempt to fulfill the randomness for the check round
+				signedTx, err := l.FulfillRandomness(ctx, checkRound)
+				if err != nil {
+					log.Printf("Failed to fulfill randomness for round %s: %v", checkRound.String(), err)
+					return err
+				}
+				log.Printf("FulfillRandomness successful! Tx Hash: %s", signedTx.Hash().Hex())
+			}
+		} else {
+			valueAtRound, err := l.GetValuesAtRound(ctx, checkRound)
+			if err != nil {
+				log.Printf("Error retrieving values at round %s: %v", checkRound.String(), err)
+				continue
+			}
+
+			startTimeInSeconds := valueAtRound.StartTime.Int64()
+			startTime := time.Unix(startTimeInSeconds, 0)
+			commitDeadline := startTime.Add(time.Second * time.Duration(CommitDuration))
+
+			if time.Now().After(commitDeadline) && !valueAtRound.IsCompleted {
+				l.ReRequestRandomWordAtRound(ctx, lastRecoveredRound)
+				l.initiateCommitProcess(lastRecoveredRound)
+			} else if !time.Now().After(commitDeadline) && !valueAtRound.IsCompleted {
+				l.initiateCommitProcess(lastRecoveredRound)
+			} else {
+				l.Recover(ctx, checkRound, valueAtRound.Omega)
+			}
+		}
+	}
+
+	return nil
+}
+
 func (l *PoFListener) SubscribeRandomWordsRequested() error {
 	var round *big.Int
 	query := ethereum.FilterQuery{
@@ -380,6 +476,52 @@ func (l *PoFListener) GetNextRound() (*big.Int, error) {
 	}
 
 	return nextRound, nil
+}
+
+func (l *PoFListener) GetLastFulfilledRound() (*big.Int, error) {
+	config := node.LoadConfig()
+	client, err := ethclient.Dial(config.RpcURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to the Ethereum client: %v", err)
+	}
+	defer client.Close()
+
+	contractAddress := common.HexToAddress(config.ContractAddress)
+	instance, err := crrrngpof.NewCrrrngpof(contractAddress, client)
+	if err != nil {
+		log.Fatalf("Failed to create the contract instance: %v", err)
+	}
+
+	opts := &bind.CallOpts{}
+	lastFulfilledRound, err := instance.LastFulfilledRound(opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve the last fulfilled round: %v", err)
+	}
+
+	return lastFulfilledRound, nil
+}
+
+func (l *PoFListener) GetLastRecoveredRound() (*big.Int, error) {
+	config := node.LoadConfig()
+	client, err := ethclient.Dial(config.RpcURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to the Ethereum client: %v", err)
+	}
+	defer client.Close()
+
+	contractAddress := common.HexToAddress(config.ContractAddress)
+	instance, err := crrrngpof.NewCrrrngpof(contractAddress, client)
+	if err != nil {
+		log.Fatalf("Failed to create the contract instance: %v", err)
+	}
+
+	opts := &bind.CallOpts{}
+	lastRecoveredRound, err := instance.LastRecoveredRound(opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve the last recovered round: %v", err)
+	}
+
+	return lastRecoveredRound, nil
 }
 
 func (l *PoFListener) GetValuesAtRound(ctx context.Context, round *big.Int) (*ValueAtRound, error) {
@@ -1101,4 +1243,64 @@ func (l *PoFListener) GetDisputeEndTimeAndLeaderAtRound(ctx context.Context, rou
 	}
 
 	return endTimeBigInt.Uint64(), leader, nil
+}
+
+func (l *PoFListener) ReRequestRandomWordAtRound(ctx context.Context, round *big.Int) error {
+	style := color.New(color.FgHiBlue, color.Bold)
+	style.Println("Preparing to re-request random word at round...")
+
+	chainID, err := l.Client.NetworkID(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to fetch network ID: %v", err)
+	}
+
+	auth, err := bind.NewKeyedTransactorWithChainID(l.PrivateKey, chainID)
+	if err != nil {
+		return fmt.Errorf("failed to create authorized transactor: %v", err)
+	}
+
+	nonce, err := l.Client.PendingNonceAt(ctx, auth.From)
+	if err != nil {
+		return fmt.Errorf("failed to fetch nonce: %v", err)
+	}
+	auth.Nonce = big.NewInt(int64(nonce))
+
+	gasPrice, err := l.Client.SuggestGasPrice(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to suggest gas price: %v", err)
+	}
+	auth.GasPrice = gasPrice
+
+	// Pack the transaction data for calling the smart contract function
+	packedData, err := l.ContractABI.Pack("reRequestRandomWordAtRound", round)
+	if err != nil {
+		return fmt.Errorf("failed to pack data for reRequestRandomWordAtRound: %v", err)
+	}
+
+	// Create and sign the transaction
+	tx := types.NewTransaction(auth.Nonce.Uint64(), l.ContractAddress, nil, 3000000, auth.GasPrice, packedData)
+	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), l.PrivateKey)
+	if err != nil {
+		return fmt.Errorf("failed to sign the transaction: %v", err)
+	}
+
+	// Send the transaction
+	if err := l.Client.SendTransaction(ctx, signedTx); err != nil {
+		return fmt.Errorf("failed to send the signed transaction: %v", err)
+	}
+
+	// Wait for the transaction to be mined
+	receipt, err := bind.WaitMined(ctx, l.Client, signedTx)
+	if err != nil {
+		return fmt.Errorf("failed to wait for transaction to be mined: %v", err)
+	}
+
+	if receipt.Status == types.ReceiptStatusFailed {
+		errMsg := fmt.Sprintf("transaction %s reverted", signedTx.Hash().Hex())
+		log.Printf("❌ %s", errMsg)
+		return fmt.Errorf("%s", errMsg)
+	}
+
+	color.New(color.FgHiGreen, color.Bold).Printf("✅  Re-request successful!!\n🔗 Tx Hash: %s\n", signedTx.Hash().Hex())
+	return nil
 }
