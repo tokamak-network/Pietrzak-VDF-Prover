@@ -29,9 +29,7 @@ func main() {
 
 	util.StartSpinner("Configuring system...", 5)
 
-	var config node.Config
-	config = node.LoadConfig()
-
+	config := node.LoadConfig()
 	color.New(color.FgHiGreen, color.Bold).Println("Configuration loaded successfully. Ready to operate.")
 
 	var listener node.ListenerInterface
@@ -39,18 +37,23 @@ func main() {
 
 	if *pofMode {
 		listener, err = nodePoF.NewPoFListener(config)
-	}
-
-	if *testMode {
+		if err != nil {
+			log.Fatalf("Listener initialization failed in PoF mode: %v", err)
+		}
+	} else if *testMode {
 		listener, err = nodeTest.NewTestListener(config)
+		if err != nil {
+			log.Fatalf("Listener initialization failed in Test mode: %v", err)
+		}
+	} else {
+		log.Fatal("No mode selected, shutting down.")
 	}
 
-	if err != nil {
-		log.Fatalf("Listener initialization failed: %v", err)
+	if listener == nil {
+		log.Fatal("Listener is not initialized.")
 	}
 
 	color.New(color.FgHiGreen, color.Bold).Println("Listener is now active and ready.")
-
 	go handleConnection(listener)
 
 	select {}
