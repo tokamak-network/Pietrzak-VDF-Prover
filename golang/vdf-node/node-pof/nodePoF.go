@@ -92,6 +92,11 @@ type SetupValues struct {
 	Stage   string
 }
 
+type FulfillStatus struct {
+	Executed  bool
+	Succeeded bool
+}
+
 type CommitValue struct {
 	Commit          BigNumber      `json:"commit"`
 	OperatorAddress common.Address `json:"operatorAddress"`
@@ -252,15 +257,17 @@ func (l *PoFListener) CheckRoundCondition() error {
 				return nil
 			} else {
 				// If they do not match, attempt to fulfill the randomness for the check round
-				signedTx, err := l.FulfillRandomness(ctx, checkRound)
-				if err != nil {
-					log.Printf("Failed to fulfill randomness for round %s: %v", checkRound.String(), err)
-					return err
+				isFulfilled, _ := l.GetFulfillStatusAtRound(currentRound)
+				if !isFulfilled.Succeeded {
+					signedTx, err := l.FulfillRandomness(ctx, checkRound)
+					if err != nil {
+						log.Printf("Failed to fulfill randomness for round %s: %v", checkRound.String(), err)
+						return err
+					}
+					log.Printf("FulfillRandomness successful! Tx Hash: %s", signedTx.Hash().Hex())
 				}
-				log.Printf("FulfillRandomness successful! Tx Hash: %s", signedTx.Hash().Hex())
 			}
 		} else {
-
 			operators, err := l.GetCommittedOperatorsAtRound(checkRound)
 			if err != nil {
 				log.Printf("Error retrieving operators at round %s: %v", checkRound.String(), err)
@@ -371,6 +378,7 @@ func (l *PoFListener) SubscribeRandomWordsRequested() error {
 					}
 				} else {
 					log.Printf("Current round %s is already completed", round.String())
+					return nil
 				}
 			}
 		}
@@ -1342,11 +1350,13 @@ func (l *PoFListener) FulfillRandomness(ctx context.Context, round *big.Int) (*t
 		return nil, fmt.Errorf("failed to fetch nonce: %v", err)
 	}
 	auth.Nonce = big.NewInt(int64(nonce))
-	auth.GasPrice, err = l.Client.SuggestGasPrice(ctx)
+
+	gasPrice, err := l.Client.SuggestGasPrice(ctx)
 	if err != nil {
 		log.Printf("Failed to suggest gas price: %v", err)
 		return nil, fmt.Errorf("failed to suggest gas price: %v", err)
 	}
+	auth.GasPrice = gasPrice
 
 	packedData, err := l.ContractABI.Pack("fulfillRandomness", round)
 	if err != nil {
@@ -1366,9 +1376,19 @@ func (l *PoFListener) FulfillRandomness(ctx context.Context, round *big.Int) (*t
 		return nil, fmt.Errorf("failed to send the signed transaction: %v", err)
 	}
 
-	color.New(color.FgHiGreen, color.Bold).Printf("✅  FulfillRandomness successful!!\n🔗 Tx Hash: %s\n", signedTx.Hash().Hex())
-	//log.Printf("FulfillRandomness successful! Tx Hash: %s", signedTx.Hash().Hex())
+	// Wait for the transaction to be mined
+	receipt, err := bind.WaitMined(ctx, l.Client, signedTx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for transaction to be mined: %v", err)
+	}
 
+	if receipt.Status == types.ReceiptStatusFailed {
+		errMsg := fmt.Sprintf("transaction %s reverted", signedTx.Hash().Hex())
+		log.Printf("❌ %s", errMsg)
+		return nil, fmt.Errorf("%s", errMsg)
+	}
+
+	color.New(color.FgHiGreen, color.Bold).Printf("✅ FulfillRandomness successful!!\n🔗 Tx Hash: %s\n", signedTx.Hash().Hex())
 	return signedTx, nil
 }
 
@@ -1462,4 +1482,32 @@ func (l *PoFListener) ReRequestRandomWordAtRound(ctx context.Context, round *big
 
 	color.New(color.FgHiGreen, color.Bold).Printf("✅  Re-request successful!!\n🔗 Tx Hash: %s\n", signedTx.Hash().Hex())
 	return nil
+}
+
+func (l *PoFListener) GetFulfillStatusAtRound(round *big.Int) (FulfillStatus, error) {
+	config := node.LoadConfig()
+	client, err := ethclient.Dial(config.RpcURL)
+	if err != nil {
+		return FulfillStatus{}, fmt.Errorf("failed to connect to the Ethereum client: %v", err)
+	}
+
+	contractAddress := common.HexToAddress(config.ContractAddress)
+	instance, err := crrrngpof.NewCrrrngpof(contractAddress, client)
+	if err != nil {
+		return FulfillStatus{}, fmt.Errorf("failed to create the contract instance: %v", err)
+	}
+
+	opts := &bind.CallOpts{}
+	status, err := instance.GetFulfillStatusAtRound(opts, round)
+	if err != nil {
+		return FulfillStatus{}, fmt.Errorf("failed to retrieve fulfill status at round: %v", err)
+	}
+
+	// Map the output from the contract to our Go struct
+	result := FulfillStatus{
+		Executed:  status.Executed,
+		Succeeded: status.Succeeded,
+	}
+
+	return result, nil
 }
