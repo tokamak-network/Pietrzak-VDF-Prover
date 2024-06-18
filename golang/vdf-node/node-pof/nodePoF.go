@@ -251,31 +251,39 @@ func (l *PoFListener) CheckRoundCondition() error {
 			}
 		}
 
-		if lastRecoveredRound.Cmp(currentRound) == 0 {
-			if lastFulfilledRound.Cmp(currentRound) == 0 {
+		IsRecovered := valueAtRound.IsCompleted
+		var nowCurrentRound *big.Int
+		if !IsRecovered {
+			nowCurrentRound = new(big.Int).Sub(currentRound, big.NewInt(1))
+		} else {
+			nowCurrentRound = currentRound
+		}
+
+		if lastRecoveredRound.Cmp(nowCurrentRound) == 0 {
+			if lastFulfilledRound.Cmp(nowCurrentRound) == 0 {
 				log.Printf("Last fulfilled round %s matches current round %s, and matches last recovered round %s", lastFulfilledRound.String(), currentRound.String(), lastRecoveredRound.String())
 				return nil
 			} else {
 				// If they do not match, attempt to fulfill the randomness for the check round
-				isFulfilled, _ := l.GetFulfillStatusAtRound(currentRound)
+				isFulfilled, _ := l.GetFulfillStatusAtRound(nowCurrentRound)
 				if !isFulfilled.Succeeded {
-					signedTx, err := l.FulfillRandomness(ctx, checkRound)
+					signedTx, err := l.FulfillRandomness(ctx, nowCurrentRound)
 					if err != nil {
-						log.Printf("Failed to fulfill randomness for round %s: %v", checkRound.String(), err)
+						log.Printf("Failed to fulfill randomness for round %s: %v", nowCurrentRound.String(), err)
 						return err
 					}
 					log.Printf("FulfillRandomness successful! Tx Hash: %s", signedTx.Hash().Hex())
 				}
 			}
 		} else {
-			operators, err := l.GetCommittedOperatorsAtRound(checkRound)
+			operators, err := l.GetCommittedOperatorsAtRound(nowCurrentRound)
 			if err != nil {
-				log.Printf("Error retrieving operators at round %s: %v", checkRound.String(), err)
+				log.Printf("Error retrieving operators at round %s: %v", nowCurrentRound.String(), err)
 				return err
 			}
 
 			if operators == nil {
-				log.Printf("No operators committed at round %s", checkRound.String())
+				log.Printf("No operators committed at round %s", nowCurrentRound.String())
 				return nil
 			}
 
@@ -283,13 +291,13 @@ func (l *PoFListener) CheckRoundCondition() error {
 
 			if commitCounts < 2 {
 				if time.Now().After(commitDeadline) {
-					l.ReRequestRandomWordAtRound(ctx, checkRound)
-					l.initiateCommitProcess(checkRound)
+					l.ReRequestRandomWordAtRound(ctx, nowCurrentRound)
+					l.initiateCommitProcess(nowCurrentRound)
 				} else {
-					l.initiateCommitProcess(checkRound)
+					l.initiateCommitProcess(nowCurrentRound)
 				}
 			} else {
-				l.AutoRecover(ctx, checkRound, walletAddress)
+				l.AutoRecover(ctx, nowCurrentRound, walletAddress)
 			}
 		}
 	}
