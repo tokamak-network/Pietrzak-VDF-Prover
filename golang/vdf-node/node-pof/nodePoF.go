@@ -238,55 +238,37 @@ func (l *PoFListener) CheckRoundCondition() error {
 
 		// checkRound가 0인 경우
 		if checkRound.Cmp(big.NewInt(0)) == 0 {
-			fmt.Println("1111")
 			// Recover가 되어 있는지 체크
 			if valueAtRound.Stage == "Finished" {
-				fmt.Println("2222")
 				// Fulfill이 되어있는지 체크
 				if isFulfilled.Succeeded {
-					fmt.Println("3333")
 					color.New(color.FgHiGreen, color.Bold).Printf("Checking round: %s - Process completed successfully\n", checkRound)
 				} else {
-					fmt.Println("4444")
-					fmt.Println("checkRound: ", checkRound)
 					isMyHashMin, leader, _ := l.FindMinHashAndCompare(ctx, checkRound, walletAddress)
 					// 만약 fulfill이 되어있지 않다면? 리더인지 아닌지 체크하고 내가 리더이면
 					// fulfill 진행
 					// 아니면 listening fullfillrandomness
 					if isMyHashMin {
-						fmt.Println("5555")
 						time.Sleep(20 * time.Second)
 						_, err := l.FulfillRandomness(ctx, checkRound)
 						if err != nil {
-							fmt.Println("6666")
-							fmt.Println("checkRound: ", checkRound)
 							log.Printf("Error in FulfillRandomness: %v", err)
 						}
 					} else {
-						fmt.Println("7777")
-						fmt.Println("checkRound: ", checkRound)
 						l.SubscribeFulfillRandomness(ctx, checkRound, leader, walletAddress)
 					}
 				}
 			} else {
-				fmt.Println("8888")
 				// Recover 되어 있지 않다면?
 
 				if commitCounts < 2 {
-					fmt.Println("9999")
 					if !time.Now().After(commitDeadline) {
-						fmt.Println("10 10 10")
-						fmt.Println("checkRound: ", checkRound)
 						l.initiateCommitProcess(checkRound)
 					} else {
-						fmt.Println("11 11 11")
-						fmt.Println("checkRound: ", checkRound)
 						l.ReRequestRandomWordAtRound(ctx, checkRound)
 						l.initiateCommitProcess(checkRound)
 					}
 				} else {
-					fmt.Println("12 12 12")
-					fmt.Println("checkRound: ", checkRound)
 					l.AutoRecover(ctx, checkRound, walletAddress)
 				}
 			}
@@ -295,43 +277,32 @@ func (l *PoFListener) CheckRoundCondition() error {
 
 			// Recover가 되어 있는지 체크
 			if checkRoundPlusOne.Cmp(lastRecoveredRoundNext) <= 0 {
-				fmt.Println("13 13 13")
 				if checkRoundPlusOne.Cmp(lastFulfilledRound) <= 0 {
-					fmt.Println("14 14 14")
 					color.New(color.FgHiGreen, color.Bold).Printf("Checking round: %s - Process completed successfully\n", checkRound)
 				} else {
 					isMyHashMin, leader, _ := l.FindMinHashAndCompare(ctx, checkRound, walletAddress)
+					fmt.Println("leader: ", leader.String())
+					fmt.Println("walletAddress: ", walletAddress)
 					if isMyHashMin {
-						fmt.Println("15 15 15")
 						time.Sleep(20 * time.Second)
-						fmt.Println("checkRound: ", checkRound)
 						_, err := l.FulfillRandomness(ctx, checkRound)
 						if err != nil {
 							log.Printf("Error in FulfillRandomness: %v", err)
 						}
 					} else {
-						fmt.Println("16 16 16")
-						fmt.Println("checkRound: ", checkRound)
 						l.SubscribeFulfillRandomness(ctx, checkRound, leader, walletAddress)
 					}
 				}
 			} else {
 				// Recover 되어 있지 않다면?
 				if commitCounts < 2 {
-					fmt.Println("17 17 17")
 					if !time.Now().After(commitDeadline) {
-						fmt.Println("18 18 18")
-						fmt.Println("checkRound: ", checkRound)
 						l.initiateCommitProcess(checkRound)
 					} else {
-						fmt.Println("19 19 19")
-						fmt.Println("checkRound: ", checkRound)
 						l.ReRequestRandomWordAtRound(ctx, checkRound)
 						l.initiateCommitProcess(checkRound)
 					}
 				} else {
-					fmt.Println("20 20 20")
-					fmt.Println("checkRound: ", checkRound)
 					l.AutoRecover(ctx, checkRound, walletAddress)
 				}
 			}
@@ -910,7 +881,7 @@ func (l *PoFListener) AutoRecover(ctx context.Context, round *big.Int, mySender 
 		}
 
 		if time.Now().After(recoverTime) {
-			time.Sleep(60 * time.Second)
+			time.Sleep(CommitDuration * time.Second)
 			err = l.Recover(ctx, round, y)
 			if err != nil {
 				log.Printf("Failed to execute recovery process: %v", err)
