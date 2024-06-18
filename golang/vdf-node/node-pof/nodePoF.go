@@ -288,9 +288,9 @@ func (l *PoFListener) CheckRoundCondition() error {
 			checkRoundPlusOne := new(big.Int).Add(checkRound, big.NewInt(1))
 
 			// Recover가 되어 있는지 체크
-			if checkRoundPlusOne.Cmp(lastRecoveredRoundNext) < 0 {
+			if checkRoundPlusOne.Cmp(lastRecoveredRoundNext) <= 0 {
 				fmt.Println("13 13 13")
-				if checkRoundPlusOne.Cmp(lastFulfilledRound) < 0 {
+				if checkRoundPlusOne.Cmp(lastFulfilledRound) <= 0 {
 					fmt.Println("14 14 14")
 					color.New(color.FgHiGreen, color.Bold).Printf("Checking round: %s - Process completed successfully\n", checkRound)
 				} else {
