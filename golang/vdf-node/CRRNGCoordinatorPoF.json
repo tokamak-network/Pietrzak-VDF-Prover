@@ -917,11 +917,6 @@
               "type": "address"
             },
             {
-              "internalType": "bytes",
-              "name": "commitsString",
-              "type": "bytes"
-            },
-            {
               "components": [
                 {
                   "internalType": "bytes",
