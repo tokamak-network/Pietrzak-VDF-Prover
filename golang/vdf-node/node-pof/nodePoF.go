@@ -239,7 +239,7 @@ func (l *PoFListener) CheckRoundCondition() error {
 						l.initiateCommitProcess(checkRound)
 					}
 				} else {
-					l.Recover(ctx, checkRound, valueAtRound.Omega)
+					l.AutoRecover(ctx, checkRound, walletAddress)
 				}
 
 				return nil
@@ -282,7 +282,7 @@ func (l *PoFListener) CheckRoundCondition() error {
 					l.initiateCommitProcess(checkRound)
 				}
 			} else {
-				l.Recover(ctx, checkRound, valueAtRound.Omega)
+				l.AutoRecover(ctx, checkRound, walletAddress)
 			}
 		}
 	}

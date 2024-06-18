@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-var timeoutTimer *time.Timer // 타임아웃 타이머 전역 변수
+var timeoutTimer *time.Timer
 
 func main() {
 	printLogo()
@@ -54,7 +54,7 @@ func main() {
 	color.New(color.FgHiGreen, color.Bold).Println("Listener is now active and ready.")
 	go handleConnection(listener)
 
-	resetTimeout(5 * time.Minute)
+	resetTimeout(20 * time.Minute)
 
 	select {}
 }
@@ -76,7 +76,7 @@ func handleConnection(listener nodePoF.PoFListenerInterface) {
 				log.Fatalf("Listener failed: %v", err)
 			}
 		}
-		resetTimeout(5 * time.Minute)
+		resetTimeout(20 * time.Minute)
 	}
 }
 
@@ -85,7 +85,7 @@ func resetTimeout(duration time.Duration) {
 		timeoutTimer.Stop()
 	}
 	timeoutTimer = time.AfterFunc(duration, func() {
-		log.Println("No requests for 5 minutes, shutting down the application...")
+		log.Println("No requests for 20 minutes, shutting down the application...")
 		os.Exit(0)
 	})
 }
