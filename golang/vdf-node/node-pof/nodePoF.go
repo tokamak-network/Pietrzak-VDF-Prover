@@ -156,6 +156,8 @@ func NewPoFListener(config node.Config) (*PoFListener, error) {
 }
 
 func (l *PoFListener) CheckRoundCondition() error {
+	color.New(color.FgHiRed, color.Bold).Printf("🚨 Checking previous rounds...\n")
+
 	nextRound, err := l.GetNextRound()
 	if err != nil {
 		log.Fatalf("Error retrieving next round: %v", err)
@@ -163,35 +165,34 @@ func (l *PoFListener) CheckRoundCondition() error {
 	}
 
 	currentRound := new(big.Int).Sub(nextRound, big.NewInt(1))
-	if currentRound.Cmp(big.NewInt(0)) <= 0 {
-		log.Println("Current round is not valid for processing.")
+	if currentRound.Cmp(big.NewInt(0)) < 0 {
+		color.New(color.FgHiGreen, color.Bold).Printf("✅ Check Complete!! \n")
+		color.New(color.FgHiYellow, color.Bold).Printf("🚫 No rounds have started yet.\n")
 		return nil
 	}
-	log.Printf("Current round number is: %s", currentRound.String())
+	//log.Printf("Current round number is: %s", currentRound.String())
 
 	lastRecoveredRound, err := l.GetLastRecoveredRound()
 	if err != nil {
 		log.Fatalf("Error retrieving last recovered round: %v", err)
 		return nil
 	}
-	log.Printf("Last recovered round number is: %s", lastRecoveredRound.String())
+	//log.Printf("Last recovered round number is: %s", lastRecoveredRound.String())
 
 	lastFulfilledRound, err := l.GetLastFulfilledRound()
 	if err != nil {
 		log.Fatalf("Error retrieving last fulfilled round: %v", err)
 		return nil
 	}
-	log.Printf("Last fulfilled round number is: %s", lastFulfilledRound.String())
+	//log.Printf("Last fulfilled round number is: %s", lastFulfilledRound.String())
 
 	ctx, cancel := context.WithTimeout(context.Background(), ContextTimeout*time.Minute)
 	defer cancel()
 
 	for checkRound := new(big.Int).Set(lastRecoveredRound); checkRound.Cmp(currentRound) <= 0; checkRound.Add(checkRound, big.NewInt(1)) {
-		fmt.Println("Checking round: ", checkRound)
+		color.New(color.FgHiYellow, color.Bold).Printf("Current checking round: %s\n", checkRound)
 
 		if lastRecoveredRound.Cmp(big.NewInt(0)) == 0 {
-			ctx, cancel := context.WithTimeout(context.Background(), ContextTimeout*time.Minute)
-			defer cancel()
 			valueAtRound, err := l.GetValuesAtRound(ctx, lastRecoveredRound)
 			if err != nil {
 				log.Printf("Error retrieving values at round 0: %v", err)
@@ -203,7 +204,7 @@ func (l *PoFListener) CheckRoundCondition() error {
 			commitDeadline := startTime.Add(time.Second * time.Duration(CommitDuration))
 
 			if time.Now().After(commitDeadline) && !valueAtRound.IsCompleted {
-				log.Println("Round 0 is not fully recovered, initiating recovery process.")
+				color.New(color.FgHiRed, color.Bold).Printf("🚨 Round %s is not fully recovered, initiating recovery process.\n", checkRound)
 				l.ReRequestRandomWordAtRound(ctx, lastRecoveredRound)
 				l.initiateCommitProcess(lastRecoveredRound)
 			} else if !time.Now().After(commitDeadline) && !valueAtRound.IsCompleted {

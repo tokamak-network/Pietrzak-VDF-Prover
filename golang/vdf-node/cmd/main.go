@@ -8,9 +8,7 @@ import (
 	nodePoF "github.com/tokamak-network/Pietrzak-VDF-Prover/golang/vdf-node/node-pof"
 	"github.com/tokamak-network/Pietrzak-VDF-Prover/golang/vdf-node/util"
 	"log"
-	"math/big"
 	"os"
-	"sync"
 	"time"
 )
 
@@ -61,24 +59,9 @@ func main() {
 	select {}
 }
 
-func handleConnection(listener node.ListenerInterface) {
-	var wg sync.WaitGroup
-
-	nextRound, err := listener.GetNextRound()
-	if err != nil {
-		log.Fatalf("Error retrieving next round: %v", err)
-		return
-	}
-
-	currentRound := new(big.Int).Sub(nextRound, big.NewInt(1))
-	if currentRound.Cmp(big.NewInt(0)) > 0 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if err := listener.CheckRoundCondition(); err != nil {
-				log.Printf("Error during CheckRoundCondition: %v", err)
-			}
-		}()
+func handleConnection(listener nodePoF.PoFListenerInterface) {
+	if err := listener.CheckRoundCondition(); err != nil {
+		log.Printf("Error during CheckRoundCondition: %v", err)
 	}
 
 	for {
