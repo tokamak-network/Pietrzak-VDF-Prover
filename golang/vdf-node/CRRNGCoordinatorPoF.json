@@ -83,6 +83,11 @@
     },
     {
       "inputs": [],
+      "name": "CommittedSameValue",
+      "type": "error"
+    },
+    {
+      "inputs": [],
       "name": "DisputePeriodEnded",
       "type": "error"
     },
@@ -1055,7 +1060,7 @@
     },
     {
       "inputs": [],
-      "name": "lastFulfilledRound",
+      "name": "lastFulfilledRoundNext",
       "outputs": [
         {
           "internalType": "uint256",
@@ -1068,7 +1073,7 @@
     },
     {
       "inputs": [],
-      "name": "lastRecoveredRound",
+      "name": "lastRecoveredRoundNext",
       "outputs": [
         {
           "internalType": "uint256",

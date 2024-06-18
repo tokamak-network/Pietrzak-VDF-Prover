@@ -160,7 +160,7 @@ func NewPoFListener(config node.Config) (*PoFListener, error) {
 }
 
 func (l *PoFListener) CheckRoundCondition() error {
-	ctx, cancel := context.WithTimeout(context.Background(), ContextTimeout*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), ContextTimeout*time.Second)
 	defer cancel()
 
 	config := node.LoadConfig()
@@ -181,6 +181,8 @@ func (l *PoFListener) CheckRoundCondition() error {
 	fmt.Println("---------------------------------------------------------------------------")
 	color.New(color.FgHiRed, color.Bold).Printf("🚨 Checking previous rounds...\n")
 
+	// requestRandomWord 값이 하나 올라감
+	// 0라운드가 진행 되면, lastRecoveredRoundNext가 1
 	nextRound, err := l.GetNextRound()
 	if err != nil {
 		log.Fatalf("Error retrieving next round: %v", err)
@@ -188,118 +190,226 @@ func (l *PoFListener) CheckRoundCondition() error {
 	}
 
 	currentRound := new(big.Int).Sub(nextRound, big.NewInt(1))
+
 	if currentRound.Cmp(big.NewInt(0)) < 0 {
 		color.New(color.FgHiGreen, color.Bold).Printf("✅  Check Complete!! \n")
 		color.New(color.FgHiYellow, color.Bold).Printf("🚫 No rounds have started yet.\n")
 		return nil
 	}
-	//log.Printf("Current round number is: %s", currentRound.String())
+	log.Printf("Current round number is: %s", currentRound.String())
 
-	lastRecoveredRound, err := l.GetLastRecoveredRound()
+	lastRecoveredRoundNext, err := l.GetLastRecoveredRoundNext()
 	if err != nil {
 		log.Fatalf("Error retrieving last recovered round: %v", err)
 		return nil
 	}
-	//log.Printf("Last recovered round number is: %s", lastRecoveredRound.String())
+	log.Printf("Last recovered round number is: %s", lastRecoveredRoundNext.String())
 
-	lastFulfilledRound, err := l.GetLastFulfilledRound()
+	lastFulfilledRound, err := l.GetLastFulfilledRoundNext()
 	if err != nil {
 		log.Fatalf("Error retrieving last fulfilled round: %v", err)
 		return nil
 	}
-	//log.Printf("Last fulfilled round number is: %s", lastFulfilledRound.String())
+	log.Printf("Last fulfilled round number is: %s", lastFulfilledRound.String())
 
-	for checkRound := new(big.Int).Set(lastRecoveredRound); checkRound.Cmp(currentRound) <= 0; checkRound.Add(checkRound, big.NewInt(1)) {
+	for checkRound := big.NewInt(0); checkRound.Cmp(currentRound) <= 0; checkRound.Add(checkRound, big.NewInt(1)) {
 		valueAtRound, err := l.GetValuesAtRound(ctx, checkRound)
 		if err != nil {
 			log.Printf("Error retrieving values at round %s: %v", checkRound.String(), err)
+		}
+		isFulfilled, _ := l.GetFulfillStatusAtRound(checkRound)
+
+		// 리더인지 아닌지 체크하는 로직
+		roundPrefix := fmt.Sprintf("Round %s - ", checkRound.String())
+		isMyHashMin, leader, _ := l.FindMinHashAndCompare(ctx, checkRound, walletAddress)
+		if isMyHashMin {
+			fmt.Println("---------------------------------------------------------------------------")
+			color.New(color.FgHiGreen, color.Bold).Printf("%sMy sender's address has the min hash\n", roundPrefix)
+			color.New(color.FgHiGreen, color.Bold).Printf("%s👑 I am the leader\n", roundPrefix)
+			fmt.Println("---------------------------------------------------------------------------")
+		} else {
+			fmt.Println("---------------------------------------------------------------------------")
+			color.New(color.FgHiRed, color.Bold).Printf("%sMy sender's address does not have the min hash.\n", roundPrefix)
+			color.New(color.FgHiRed, color.Bold).Printf("%s😢 I am not the leader.\n", roundPrefix)
+			fmt.Println("---------------------------------------------------------------------------")
+		}
+
+		operators, err := l.GetCommittedOperatorsAtRound(checkRound)
+		if err != nil {
+			log.Printf("Error retrieving operators at round %s: %v", checkRound.String(), err)
+			return err
+		}
+
+		if operators == nil {
+			log.Printf("No operators committed at round %s", checkRound.String())
+			return nil
 		}
 
 		startTimeInSeconds := valueAtRound.StartTime.Int64()
 		startTime := time.Unix(startTimeInSeconds, 0)
 		commitDeadline := startTime.Add(time.Second * time.Duration(CommitDuration))
+		commitCounts := len(operators)
 
-		color.New(color.FgHiYellow, color.Bold).Printf("Current checking round: %s\n", checkRound)
-
-		if lastRecoveredRound.Cmp(big.NewInt(0)) == 0 {
-			if !valueAtRound.IsCompleted {
-				operators, err := l.GetCommittedOperatorsAtRound(checkRound)
-				if err != nil {
-					log.Printf("Error retrieving operators at round %s: %v", checkRound.String(), err)
-					return err
+		// checkRound가 0인 경우
+		if checkRound.Cmp(big.NewInt(0)) == 0 {
+			// Recover가 되어 있는지 체크
+			if valueAtRound.Stage == "Finished" {
+				// Fulfill이 되어있는지 체크
+				if isFulfilled.Succeeded {
+					color.New(color.FgHiGreen, color.Bold).Printf("Checking round: %s - Process completed successfully\n", checkRound)
+				} else {
+					// 만약 fulfill이 되어있지 않다면? 리더인지 아닌지 체크하고 내가 리더이면
+					// fulfill 진행
+					// 아니면 listening fullfillrandomness
+					if isMyHashMin {
+						time.Sleep(20 * time.Second)
+						_, err := l.FulfillRandomness(ctx, checkRound)
+						if err != nil {
+							log.Printf("Error in FulfillRandomness: %v", err)
+						}
+					} else {
+						l.SubscribeFulfillRandomness(ctx, checkRound, leader, walletAddress)
+					}
 				}
-
-				if operators == nil {
-					log.Printf("No operators committed at round %s", checkRound.String())
-					return nil
-				}
-
-				//l.initiateCommitProcess(lastRecoveredRound)
-				commitCounts := len(operators)
+			} else {
+				// Recover 되어 있지 않다면?
 				if commitCounts < 2 {
-					if time.Now().After(commitDeadline) {
-						l.ReRequestRandomWordAtRound(ctx, checkRound)
+					if !time.Now().After(commitDeadline) {
 						l.initiateCommitProcess(checkRound)
 					} else {
+						l.ReRequestRandomWordAtRound(ctx, checkRound)
 						l.initiateCommitProcess(checkRound)
 					}
 				} else {
 					l.AutoRecover(ctx, checkRound, walletAddress)
 				}
-
-				return nil
 			}
 		}
 
-		IsRecovered := valueAtRound.IsCompleted
-		var nowCurrentRound *big.Int
-		if !IsRecovered {
-			nowCurrentRound = new(big.Int).Sub(currentRound, big.NewInt(1))
-		} else {
-			nowCurrentRound = currentRound
-		}
+		checkRoundPlusOne := new(big.Int).Add(checkRound, big.NewInt(1))
 
-		if lastRecoveredRound.Cmp(nowCurrentRound) == 0 {
-			if lastFulfilledRound.Cmp(nowCurrentRound) == 0 {
-				log.Printf("Last fulfilled round %s matches current round %s, and matches last recovered round %s", lastFulfilledRound.String(), currentRound.String(), lastRecoveredRound.String())
-				return nil
+		// Recover가 되어 있는지 체크
+		if checkRoundPlusOne.Cmp(lastRecoveredRoundNext) == 0 {
+			if checkRoundPlusOne.Cmp(lastFulfilledRound) == 0 {
+				color.New(color.FgHiGreen, color.Bold).Printf("Checking round: %s - Process completed successfully\n", checkRound)
 			} else {
-				// If they do not match, attempt to fulfill the randomness for the check round
-				isFulfilled, _ := l.GetFulfillStatusAtRound(nowCurrentRound)
-				if !isFulfilled.Succeeded {
-					signedTx, err := l.FulfillRandomness(ctx, nowCurrentRound)
+				if isMyHashMin {
+					time.Sleep(20 * time.Second)
+					_, err := l.FulfillRandomness(ctx, checkRound)
 					if err != nil {
-						log.Printf("Failed to fulfill randomness for round %s: %v", nowCurrentRound.String(), err)
-						return err
+						log.Printf("Error in FulfillRandomness: %v", err)
 					}
-					log.Printf("FulfillRandomness successful! Tx Hash: %s", signedTx.Hash().Hex())
+				} else {
+					l.SubscribeFulfillRandomness(ctx, checkRound, leader, walletAddress)
 				}
 			}
 		} else {
-			operators, err := l.GetCommittedOperatorsAtRound(nowCurrentRound)
-			if err != nil {
-				log.Printf("Error retrieving operators at round %s: %v", nowCurrentRound.String(), err)
-				return err
-			}
-
-			if operators == nil {
-				log.Printf("No operators committed at round %s", nowCurrentRound.String())
-				return nil
-			}
-
-			commitCounts := len(operators)
-
+			// Recover 되어 있지 않다면?
 			if commitCounts < 2 {
-				if time.Now().After(commitDeadline) {
-					l.ReRequestRandomWordAtRound(ctx, nowCurrentRound)
-					l.initiateCommitProcess(nowCurrentRound)
+				if !time.Now().After(commitDeadline) {
+					l.initiateCommitProcess(checkRound)
 				} else {
-					l.initiateCommitProcess(nowCurrentRound)
+					l.ReRequestRandomWordAtRound(ctx, checkRound)
+					l.initiateCommitProcess(checkRound)
 				}
 			} else {
-				l.AutoRecover(ctx, nowCurrentRound, walletAddress)
+				l.AutoRecover(ctx, checkRound, walletAddress)
 			}
 		}
+
+		//	var nowCurrentRound *big.Int
+		//	if !IsRecovered {
+		//		nowCurrentRound = new(big.Int).Sub(checkRound, big.NewInt(1))
+		//	} else {
+		//		nowCurrentRound = currentRound
+		//	}
+		//
+		//	startTimeInSeconds := valueAtRound.StartTime.Int64()
+		//	startTime := time.Unix(startTimeInSeconds, 0)
+		//	commitDeadline := startTime.Add(time.Second * time.Duration(CommitDuration))
+		//	fmt.Println("nowCurrentRound: ", nowCurrentRound)
+		//	color.New(color.FgHiYellow, color.Bold).Printf("Current checking round\n")
+		//
+		//	if lastRecoveredRoundNext.Cmp(big.NewInt(0)) == 0 {
+		//		//fmt.Println("checkRound: ", nowCurrentRound)
+		//		if !valueAtRound.IsCompleted {
+		//			operators, err := l.GetCommittedOperatorsAtRound(nowCurrentRound)
+		//			if err != nil {
+		//				log.Printf("Error retrieving operators at round %s: %v", checkRound.String(), err)
+		//				return err
+		//			}
+		//
+		//			if operators == nil {
+		//				log.Printf("No operators committed at round %s", checkRound.String())
+		//				return nil
+		//			}
+		//
+		//			//l.initiateCommitProcess(lastRecoveredRound)
+		//			commitCounts := len(operators)
+		//			if commitCounts < 2 {
+		//				if time.Now().After(commitDeadline) {
+		//					l.ReRequestRandomWordAtRound(ctx, checkRound)
+		//					l.initiateCommitProcess(checkRound)
+		//				} else {
+		//					l.initiateCommitProcess(checkRound)
+		//				}
+		//			} else {
+		//				l.AutoRecover(ctx, checkRound, walletAddress)
+		//			}
+		//
+		//			return nil
+		//		}
+		//	}
+		//
+		//	//IsRecovered := valueAtRound.IsCompleted
+		//	//var nowCurrentRound *big.Int
+		//	//if !IsRecovered {
+		//	//	nowCurrentRound = new(big.Int).Sub(currentRound, big.NewInt(1))
+		//	//} else {
+		//	//	nowCurrentRound = currentRound
+		//	//}
+		//
+		//	if lastRecoveredRoundNext.Cmp(nowCurrentRound) == 0 {
+		//		if lastFulfilledRound.Cmp(nowCurrentRound) == 0 {
+		//			log.Printf("Last fulfilled round %s matches current round %s, and matches last recovered round %s", lastFulfilledRound.String(), currentRound.String(), lastRecoveredRoundNext.String())
+		//			return nil
+		//		} else {
+		//			// If they do not match, attempt to fulfill the randomness for the check round
+		//			isFulfilled, _ := l.GetFulfillStatusAtRound(nowCurrentRound)
+		//			if !isFulfilled.Succeeded {
+		//				signedTx, err := l.FulfillRandomness(ctx, nowCurrentRound)
+		//				if err != nil {
+		//					log.Printf("Failed to fulfill randomness for round %s: %v", nowCurrentRound.String(), err)
+		//					return err
+		//				}
+		//				log.Printf("FulfillRandomness successful! Tx Hash: %s", signedTx.Hash().Hex())
+		//			}
+		//		}
+		//	} else {
+		//		operators, err := l.GetCommittedOperatorsAtRound(nowCurrentRound)
+		//		if err != nil {
+		//			log.Printf("Error retrieving operators at round %s: %v", nowCurrentRound.String(), err)
+		//			return err
+		//		}
+		//
+		//		if operators == nil {
+		//			log.Printf("No operators committed at round %s", nowCurrentRound.String())
+		//			return nil
+		//		}
+		//
+		//		commitCounts := len(operators)
+		//
+		//		if commitCounts < 2 {
+		//			if time.Now().After(commitDeadline) {
+		//				l.ReRequestRandomWordAtRound(ctx, nowCurrentRound)
+		//				l.initiateCommitProcess(nowCurrentRound)
+		//			} else {
+		//				l.initiateCommitProcess(nowCurrentRound)
+		//			}
+		//		} else {
+		//			l.AutoRecover(ctx, nowCurrentRound, walletAddress)
+		//		}
+		//	}
 	}
 
 	return nil
@@ -631,7 +741,7 @@ func (l *PoFListener) GetCommittedOperatorsAtRound(round *big.Int) ([]common.Add
 	return operators, nil
 }
 
-func (l *PoFListener) GetLastFulfilledRound() (*big.Int, error) {
+func (l *PoFListener) GetLastFulfilledRoundNext() (*big.Int, error) {
 	config := node.LoadConfig()
 	client, err := ethclient.Dial(config.RpcURL)
 	if err != nil {
@@ -646,7 +756,7 @@ func (l *PoFListener) GetLastFulfilledRound() (*big.Int, error) {
 	}
 
 	opts := &bind.CallOpts{}
-	lastFulfilledRound, err := instance.LastFulfilledRound(opts)
+	lastFulfilledRound, err := instance.LastFulfilledRoundNext(opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve the last fulfilled round: %v", err)
 	}
@@ -654,7 +764,7 @@ func (l *PoFListener) GetLastFulfilledRound() (*big.Int, error) {
 	return lastFulfilledRound, nil
 }
 
-func (l *PoFListener) GetLastRecoveredRound() (*big.Int, error) {
+func (l *PoFListener) GetLastRecoveredRoundNext() (*big.Int, error) {
 	config := node.LoadConfig()
 	client, err := ethclient.Dial(config.RpcURL)
 	if err != nil {
@@ -669,7 +779,7 @@ func (l *PoFListener) GetLastRecoveredRound() (*big.Int, error) {
 	}
 
 	opts := &bind.CallOpts{}
-	lastRecoveredRound, err := instance.LastRecoveredRound(opts)
+	lastRecoveredRound, err := instance.LastRecoveredRoundNext(opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve the last recovered round: %v", err)
 	}
