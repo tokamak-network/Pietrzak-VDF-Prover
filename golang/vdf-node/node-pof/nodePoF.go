@@ -200,14 +200,13 @@ func (l *PoFListener) CheckRoundCondition() error {
 			}
 			if operators == nil {
 				log.Printf("No operators committed at round %s", checkRound.String())
-				return nil
+				l.initiateCommitProcess(lastRecoveredRound)
 			}
 
 			valueAtRound, err := l.GetValuesAtRound(ctx, lastRecoveredRound)
 			if err != nil {
 				log.Printf("Error retrieving values at round 0: %v", err)
 			}
-			l.initiateCommitProcess(lastRecoveredRound)
 
 			startTimeInSeconds := valueAtRound.StartTime.Int64()
 			startTime := time.Unix(startTimeInSeconds, 0)
