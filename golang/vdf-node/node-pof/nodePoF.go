@@ -68,7 +68,6 @@ type ValueAtRound struct {
 	RequestedTime *big.Int       `json:"requestedTime"`
 	CommitCounts  *big.Int       `json:"commitCounts"`
 	Consumer      common.Address `json:"consumer"`
-	CommitsString []byte         `json:"commitsString"`
 	Omega         BigNumber      `json:"omega"`
 	Stage         string         `json:"stage"`
 	IsCompleted   bool           `json:"isCompleted"`
@@ -206,30 +205,45 @@ func (l *PoFListener) CheckRoundCondition() error {
 	//log.Printf("Last fulfilled round number is: %s", lastFulfilledRound.String())
 
 	for checkRound := new(big.Int).Set(lastRecoveredRound); checkRound.Cmp(currentRound) <= 0; checkRound.Add(checkRound, big.NewInt(1)) {
+		valueAtRound, err := l.GetValuesAtRound(ctx, checkRound)
+		if err != nil {
+			log.Printf("Error retrieving values at round %s: %v", checkRound.String(), err)
+		}
+
+		startTimeInSeconds := valueAtRound.StartTime.Int64()
+		startTime := time.Unix(startTimeInSeconds, 0)
+		commitDeadline := startTime.Add(time.Second * time.Duration(CommitDuration))
+
 		color.New(color.FgHiYellow, color.Bold).Printf("Current checking round: %s\n", checkRound)
 
 		if lastRecoveredRound.Cmp(big.NewInt(0)) == 0 {
-			operators, err := l.GetCommittedOperatorsAtRound(checkRound)
-			if err != nil {
-				log.Printf("Error retrieving operators at round %s: %v", checkRound.String(), err)
-				return err
-			}
+			if !valueAtRound.IsCompleted {
+				operators, err := l.GetCommittedOperatorsAtRound(checkRound)
+				if err != nil {
+					log.Printf("Error retrieving operators at round %s: %v", checkRound.String(), err)
+					return err
+				}
 
-			if operators == nil {
-				log.Printf("No operators committed at round %s", checkRound.String())
+				if operators == nil {
+					log.Printf("No operators committed at round %s", checkRound.String())
+					return nil
+				}
+
+				//l.initiateCommitProcess(lastRecoveredRound)
+				commitCounts := len(operators)
+				if commitCounts < 2 {
+					if time.Now().After(commitDeadline) {
+						l.ReRequestRandomWordAtRound(ctx, checkRound)
+						l.initiateCommitProcess(checkRound)
+					} else {
+						l.initiateCommitProcess(checkRound)
+					}
+				} else {
+					l.Recover(ctx, checkRound, valueAtRound.Omega)
+				}
+
 				return nil
 			}
-
-			//l.initiateCommitProcess(lastRecoveredRound)
-			commitCounts := len(operators)
-			if commitCounts < 2 {
-				l.ReRequestRandomWordAtRound(ctx, checkRound)
-				l.initiateCommitProcess(checkRound)
-			} else {
-				l.initiateCommitProcess(checkRound)
-			}
-
-			return nil
 		}
 
 		if lastRecoveredRound.Cmp(currentRound) == 0 {
@@ -246,15 +260,6 @@ func (l *PoFListener) CheckRoundCondition() error {
 				log.Printf("FulfillRandomness successful! Tx Hash: %s", signedTx.Hash().Hex())
 			}
 		} else {
-			valueAtRound, err := l.GetValuesAtRound(ctx, checkRound)
-			if err != nil {
-				log.Printf("Error retrieving values at round %s: %v", checkRound.String(), err)
-				continue
-			}
-
-			startTimeInSeconds := valueAtRound.StartTime.Int64()
-			startTime := time.Unix(startTimeInSeconds, 0)
-			commitDeadline := startTime.Add(time.Second * time.Duration(CommitDuration))
 
 			operators, err := l.GetCommittedOperatorsAtRound(checkRound)
 			if err != nil {
@@ -686,7 +691,6 @@ func (l *PoFListener) GetValuesAtRound(ctx context.Context, round *big.Int) (*Va
 		RequestedTime: rawResult.RequestedTime,
 		CommitCounts:  rawResult.CommitCounts,
 		Consumer:      rawResult.Consumer,
-		CommitsString: rawResult.CommitsString,
 		Omega:         BigNumber{Val: rawResult.Omega.Val, Bitlen: rawResult.Omega.Bitlen},
 		Stage:         GetStage(rawResult.Stage),
 		IsCompleted:   rawResult.IsCompleted,

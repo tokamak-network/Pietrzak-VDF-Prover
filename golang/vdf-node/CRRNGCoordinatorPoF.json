@@ -867,6 +867,11 @@
           "components": [
             {
               "internalType": "uint256",
+              "name": "commitTimestamp",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
               "name": "commitIndex",
               "type": "uint256"
             },
