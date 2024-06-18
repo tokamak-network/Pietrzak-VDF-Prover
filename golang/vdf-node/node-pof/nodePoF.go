@@ -156,6 +156,25 @@ func NewPoFListener(config node.Config) (*PoFListener, error) {
 }
 
 func (l *PoFListener) CheckRoundCondition() error {
+	ctx, cancel := context.WithTimeout(context.Background(), ContextTimeout*time.Minute)
+	defer cancel()
+
+	config := node.LoadConfig()
+	walletAddress := common.HexToAddress(config.WalletAddress)
+	IsOperator, err := l.IsOperator(ctx, walletAddress)
+
+	if err != nil {
+		log.Printf("Failed to check if wallet is an operator: %v", err)
+		return nil
+	}
+
+	if !IsOperator {
+		fmt.Println("---------------------------------------------------------------------------")
+		color.New(color.FgHiRed, color.Bold).Printf("🚨 Wallet is not an operator\n")
+		l.OperatorDeposit(ctx)
+	}
+
+	fmt.Println("---------------------------------------------------------------------------")
 	color.New(color.FgHiRed, color.Bold).Printf("🚨 Checking previous rounds...\n")
 
 	nextRound, err := l.GetNextRound()
@@ -166,7 +185,7 @@ func (l *PoFListener) CheckRoundCondition() error {
 
 	currentRound := new(big.Int).Sub(nextRound, big.NewInt(1))
 	if currentRound.Cmp(big.NewInt(0)) < 0 {
-		color.New(color.FgHiGreen, color.Bold).Printf("✅ Check Complete!! \n")
+		color.New(color.FgHiGreen, color.Bold).Printf("✅  Check Complete!! \n")
 		color.New(color.FgHiYellow, color.Bold).Printf("🚫 No rounds have started yet.\n")
 		return nil
 	}
@@ -186,9 +205,6 @@ func (l *PoFListener) CheckRoundCondition() error {
 	}
 	//log.Printf("Last fulfilled round number is: %s", lastFulfilledRound.String())
 
-	ctx, cancel := context.WithTimeout(context.Background(), ContextTimeout*time.Minute)
-	defer cancel()
-
 	for checkRound := new(big.Int).Set(lastRecoveredRound); checkRound.Cmp(currentRound) <= 0; checkRound.Add(checkRound, big.NewInt(1)) {
 		color.New(color.FgHiYellow, color.Bold).Printf("Current checking round: %s\n", checkRound)
 
@@ -198,35 +214,28 @@ func (l *PoFListener) CheckRoundCondition() error {
 				log.Printf("Error retrieving operators at round %s: %v", checkRound.String(), err)
 				return err
 			}
+
 			if operators == nil {
 				log.Printf("No operators committed at round %s", checkRound.String())
-				l.initiateCommitProcess(lastRecoveredRound)
+				return nil
 			}
 
-			valueAtRound, err := l.GetValuesAtRound(ctx, lastRecoveredRound)
-			if err != nil {
-				log.Printf("Error retrieving values at round 0: %v", err)
-			}
-
-			startTimeInSeconds := valueAtRound.StartTime.Int64()
-			startTime := time.Unix(startTimeInSeconds, 0)
-			commitDeadline := startTime.Add(time.Second * time.Duration(CommitDuration))
-
-			if time.Now().After(commitDeadline) && !valueAtRound.IsCompleted {
-				color.New(color.FgHiRed, color.Bold).Printf("🚨 Round %s is not fully recovered, initiating recovery process.\n", checkRound)
-				l.ReRequestRandomWordAtRound(ctx, lastRecoveredRound)
-				l.initiateCommitProcess(lastRecoveredRound)
-			} else if !time.Now().After(commitDeadline) && !valueAtRound.IsCompleted {
-				l.initiateCommitProcess(lastRecoveredRound)
+			//l.initiateCommitProcess(lastRecoveredRound)
+			commitCounts := len(operators)
+			if commitCounts < 2 {
+				l.ReRequestRandomWordAtRound(ctx, checkRound)
+				l.initiateCommitProcess(checkRound)
+			} else {
+				l.initiateCommitProcess(checkRound)
 			}
 
 			return nil
 		}
 
-		if lastRecoveredRound.Cmp(checkRound) == 0 {
-			fmt.Println("lastRecoveredRound: ", checkRound)
+		if lastRecoveredRound.Cmp(currentRound) == 0 {
 			if lastFulfilledRound.Cmp(currentRound) == 0 {
 				log.Printf("Last fulfilled round %s matches current round %s, and matches last recovered round %s", lastFulfilledRound.String(), currentRound.String(), lastRecoveredRound.String())
+				return nil
 			} else {
 				// If they do not match, attempt to fulfill the randomness for the check round
 				signedTx, err := l.FulfillRandomness(ctx, checkRound)
@@ -247,11 +256,26 @@ func (l *PoFListener) CheckRoundCondition() error {
 			startTime := time.Unix(startTimeInSeconds, 0)
 			commitDeadline := startTime.Add(time.Second * time.Duration(CommitDuration))
 
-			if time.Now().After(commitDeadline) && !valueAtRound.IsCompleted {
-				l.ReRequestRandomWordAtRound(ctx, lastRecoveredRound)
-				l.initiateCommitProcess(lastRecoveredRound)
-			} else if !time.Now().After(commitDeadline) && !valueAtRound.IsCompleted {
-				l.initiateCommitProcess(lastRecoveredRound)
+			operators, err := l.GetCommittedOperatorsAtRound(checkRound)
+			if err != nil {
+				log.Printf("Error retrieving operators at round %s: %v", checkRound.String(), err)
+				return err
+			}
+
+			if operators == nil {
+				log.Printf("No operators committed at round %s", checkRound.String())
+				return nil
+			}
+
+			commitCounts := len(operators)
+
+			if commitCounts < 2 {
+				if time.Now().After(commitDeadline) {
+					l.ReRequestRandomWordAtRound(ctx, checkRound)
+					l.initiateCommitProcess(checkRound)
+				} else {
+					l.initiateCommitProcess(checkRound)
+				}
 			} else {
 				l.Recover(ctx, checkRound, valueAtRound.Omega)
 			}
@@ -392,6 +416,70 @@ func (l *PoFListener) initiateCommitProcess(round *big.Int) {
 		//util.StartSpinner("Waiting for Auto Recover...", 5)
 		l.AutoRecover(recoveryCtx, round, sender)
 	}(round, valuesAtRound.StartTime)
+}
+
+func (l *PoFListener) OperatorDeposit(ctx context.Context) (common.Address, *types.Transaction, error) {
+	style := color.New(color.FgHiBlue, color.Bold)
+	style.Println("Preparing to deposit...")
+
+	chainID, err := l.Client.NetworkID(ctx)
+	if err != nil {
+		return common.Address{}, nil, fmt.Errorf("failed to fetch network ID: %v", err)
+	}
+
+	auth, err := bind.NewKeyedTransactorWithChainID(l.PrivateKey, chainID)
+	if err != nil {
+		return common.Address{}, nil, fmt.Errorf("failed to create authorized transactor: %v", err)
+	}
+
+	nonce, err := l.Client.PendingNonceAt(ctx, auth.From)
+	if err != nil {
+		return common.Address{}, nil, fmt.Errorf("failed to fetch nonce: %v", err)
+	}
+	auth.Nonce = big.NewInt(int64(nonce))
+
+	gasPrice, err := l.Client.SuggestGasPrice(ctx)
+	if err != nil {
+		return common.Address{}, nil, fmt.Errorf("failed to suggest gas price: %v", err)
+	}
+	auth.GasPrice = gasPrice
+
+	// Set the amount of Ether you want to send in the transaction
+	amount := new(big.Int)
+	amount.SetString("5000000000000000", 10) // 0.005 ether in wei
+	auth.Value = amount                      // Setting the value of the transaction to 0.005 ether
+
+	packedData, err := l.ContractABI.Pack("operatorDeposit")
+	if err != nil {
+		return common.Address{}, nil, fmt.Errorf("failed to pack data for deposit: %v", err)
+	}
+
+	tx := types.NewTransaction(auth.Nonce.Uint64(), l.ContractAddress, amount, 3000000, auth.GasPrice, packedData)
+	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), l.PrivateKey)
+	if err != nil {
+		return common.Address{}, nil, fmt.Errorf("failed to sign the transaction: %v", err)
+	}
+
+	if err := l.Client.SendTransaction(ctx, signedTx); err != nil {
+		return common.Address{}, nil, fmt.Errorf("failed to send the signed transaction: %v", err)
+	}
+
+	receipt, err := bind.WaitMined(ctx, l.Client, signedTx)
+	if err != nil {
+		return common.Address{}, nil, fmt.Errorf("failed to wait for transaction to be mined: %v", err)
+	}
+
+	if receipt.Status == types.ReceiptStatusFailed {
+		errMsg := fmt.Sprintf("transaction %s reverted", signedTx.Hash().Hex())
+		log.Printf("❌ %s", errMsg)
+		fmt.Println("---------------------------------------------------------------------------")
+		return common.Address{}, nil, fmt.Errorf("%s", errMsg)
+	}
+
+	color.New(color.FgHiGreen, color.Bold).Printf("✅  Deposit successful!!\n🔗 Tx Hash: %s\n", signedTx.Hash().Hex())
+	fmt.Println("---------------------------------------------------------------------------")
+
+	return auth.From, signedTx, nil // Return the sender address and the transaction
 }
 
 func (l *PoFListener) Commit(ctx context.Context, round *big.Int) (common.Address, []byte, error) {
@@ -572,30 +660,30 @@ func (l *PoFListener) GetValuesAtRound(ctx context.Context, round *big.Int) (*Va
 	config := node.LoadConfig()
 	client, err := ethclient.Dial(config.RpcURL)
 	if err != nil {
-		log.Fatalf("Failed to connect to the Ethereum client: %v", err)
+		log.Printf("Failed to connect to the Ethereum client: %v", err)
 	}
 	defer client.Close()
 
 	contractAddress := common.HexToAddress(config.ContractAddress)
 	instance, err := crrrngpof.NewCrrrngpof(contractAddress, client)
 	if err != nil {
-		log.Fatalf("Failed to create the contract instance: %v", err)
+		log.Printf("Failed to create the contract instance: %v", err)
 	}
 
 	opts := &bind.CallOpts{Context: ctx}
 	rawResult, err := instance.GetValuesAtRound(opts, round)
 	if err != nil {
-		log.Fatalf("Failed to retrieve values at round: %v", err)
+		log.Printf("Failed to retrieve values at round: %v", err)
 	}
 
 	//setupValues, err := GetSetupValues(ctx)
 	if err != nil {
-		log.Fatalf("Failed to retrieve setup values: %v", err)
+		log.Printf("Failed to retrieve setup values: %v", err)
 	}
 
 	result := &ValueAtRound{
-		StartTime: rawResult.StartTime,
-		//RequestedTime: rawResult.RequestedTime,
+		StartTime:     rawResult.StartTime,
+		RequestedTime: rawResult.RequestedTime,
 		CommitCounts:  rawResult.CommitCounts,
 		Consumer:      rawResult.Consumer,
 		CommitsString: rawResult.CommitsString,
@@ -614,6 +702,29 @@ func (l *PoFListener) GetValuesAtRound(ctx context.Context, round *big.Int) (*Va
 
 	//fmt.Printf("GET Values: %+v\n", result)
 	return result, nil
+}
+
+func (l *PoFListener) IsOperator(ctx context.Context, operatorAddress common.Address) (bool, error) {
+	config := node.LoadConfig()
+	client, err := ethclient.Dial(config.RpcURL)
+	if err != nil {
+		return false, fmt.Errorf("failed to connect to the Ethereum client: %v", err)
+	}
+	defer client.Close()
+
+	contractAddress := common.HexToAddress(config.ContractAddress)
+	instance, err := crrrngpof.NewCrrrngpof(contractAddress, client)
+	if err != nil {
+		return false, fmt.Errorf("failed to create the contract instance: %v", err)
+	}
+
+	opts := &bind.CallOpts{Context: ctx}
+	isOp, err := instance.IsOperator(opts, operatorAddress)
+	if err != nil {
+		return false, fmt.Errorf("failed to retrieve operator status: %v", err)
+	}
+
+	return isOp, nil
 }
 
 func GetCommitValue(ctx context.Context, round *big.Int, totalCommits int64) ([]*CommitValue, error) {
