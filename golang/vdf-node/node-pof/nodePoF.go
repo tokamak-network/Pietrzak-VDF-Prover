@@ -193,11 +193,21 @@ func (l *PoFListener) CheckRoundCondition() error {
 		color.New(color.FgHiYellow, color.Bold).Printf("Current checking round: %s\n", checkRound)
 
 		if lastRecoveredRound.Cmp(big.NewInt(0)) == 0 {
+			operators, err := l.GetCommittedOperatorsAtRound(checkRound)
+			if err != nil {
+				log.Printf("Error retrieving operators at round %s: %v", checkRound.String(), err)
+				return err
+			}
+			if operators == nil {
+				log.Printf("No operators committed at round %s", checkRound.String())
+				return nil
+			}
+
 			valueAtRound, err := l.GetValuesAtRound(ctx, lastRecoveredRound)
 			if err != nil {
 				log.Printf("Error retrieving values at round 0: %v", err)
-				return err
 			}
+			l.initiateCommitProcess(lastRecoveredRound)
 
 			startTimeInSeconds := valueAtRound.StartTime.Int64()
 			startTime := time.Unix(startTimeInSeconds, 0)
@@ -483,6 +493,34 @@ func (l *PoFListener) GetNextRound() (*big.Int, error) {
 	}
 
 	return nextRound, nil
+}
+
+func (l *PoFListener) GetCommittedOperatorsAtRound(round *big.Int) ([]common.Address, error) {
+	config := node.LoadConfig()
+	client, err := ethclient.Dial(config.RpcURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to the Ethereum client: %v", err)
+		return nil, err
+	}
+
+	contractAddress := common.HexToAddress(config.ContractAddress)
+	instance, err := crrrngpof.NewCrrrngpof(contractAddress, client)
+	if err != nil {
+		log.Fatalf("Failed to create the contract instance: %v", err)
+		return nil, err
+	}
+
+	opts := &bind.CallOpts{}
+	operators, err := instance.GetCommittedOperatorsAtRound(opts, round)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve the committed operators at round %s: %v", round.String(), err)
+	}
+
+	if len(operators) == 0 {
+		return nil, nil
+	}
+
+	return operators, nil
 }
 
 func (l *PoFListener) GetLastFulfilledRound() (*big.Int, error) {
