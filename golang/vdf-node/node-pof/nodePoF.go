@@ -196,23 +196,30 @@ func (l *PoFListener) CheckRoundCondition() error {
 		color.New(color.FgHiYellow, color.Bold).Printf("🚫 No rounds have started yet.\n")
 		return nil
 	}
-	log.Printf("Current round number is: %s", currentRound.String())
+	//log.Printf("Current round number is: %s", currentRound.String())
 
 	lastRecoveredRoundNext, err := l.GetLastRecoveredRoundNext()
 	if err != nil {
 		log.Fatalf("Error retrieving last recovered round: %v", err)
 		return nil
 	}
-	log.Printf("Last recovered round number is: %s", lastRecoveredRoundNext.String())
+	//log.Printf("Last recovered round number is: %s", lastRecoveredRoundNext.String())
 
-	lastFulfilledRound, err := l.GetLastFulfilledRoundNext()
+	lastFulfilledRoundNext, err := l.GetLastFulfilledRoundNext()
 	if err != nil {
 		log.Fatalf("Error retrieving last fulfilled round: %v", err)
 		return nil
 	}
-	log.Printf("Last fulfilled round number is: %s", lastFulfilledRound.String())
+	//log.Printf("Last fulfilled round number is: %s", lastFulfilledRound.String())
 
-	for checkRound := big.NewInt(0); checkRound.Cmp(currentRound) <= 0; checkRound.Add(checkRound, big.NewInt(1)) {
+	startRound := lastRecoveredRoundNext
+	if lastFulfilledRoundNext.Cmp(startRound) < 0 {
+		startRound = lastFulfilledRoundNext
+	}
+	fmt.Println("lastRecoveredRoundNext: ", lastRecoveredRoundNext)
+	fmt.Println("lastFulfilledRoundNext: ", lastFulfilledRoundNext)
+
+	for checkRound := startRound; checkRound.Cmp(currentRound) <= 0; checkRound.Add(checkRound, big.NewInt(1)) {
 		fmt.Println("checkRound: ", checkRound.String())
 		valueAtRound, err := l.GetValuesAtRound(ctx, checkRound)
 		if err != nil {
@@ -236,18 +243,15 @@ func (l *PoFListener) CheckRoundCondition() error {
 		commitDeadline := startTime.Add(time.Second * time.Duration(CommitDuration))
 		commitCounts := len(operators)
 
-		// checkRound가 0인 경우
+		// Check Round 0
 		if checkRound.Cmp(big.NewInt(0)) == 0 {
-			// Recover가 되어 있는지 체크
+			// Checking if Round 0 is Recovered
 			if valueAtRound.Stage == "Finished" {
-				// Fulfill이 되어있는지 체크
+				// Checking if Round 0 is Fulfilled
 				if isFulfilled.Succeeded {
 					color.New(color.FgHiGreen, color.Bold).Printf("Checking round: %s - Process completed successfully\n", checkRound)
 				} else {
 					isMyHashMin, leader, _ := l.FindMinHashAndCompare(ctx, checkRound, walletAddress)
-					// 만약 fulfill이 되어있지 않다면? 리더인지 아닌지 체크하고 내가 리더이면
-					// fulfill 진행
-					// 아니면 listening fullfillrandomness
 					if isMyHashMin {
 						time.Sleep(20 * time.Second)
 						_, err := l.FulfillRandomness(ctx, checkRound)
@@ -259,8 +263,6 @@ func (l *PoFListener) CheckRoundCondition() error {
 					}
 				}
 			} else {
-				// Recover 되어 있지 않다면?
-
 				if commitCounts < 2 {
 					if !time.Now().After(commitDeadline) {
 						l.initiateCommitProcess(checkRound)
@@ -275,9 +277,8 @@ func (l *PoFListener) CheckRoundCondition() error {
 		} else {
 			checkRoundPlusOne := new(big.Int).Add(checkRound, big.NewInt(1))
 
-			// Recover가 되어 있는지 체크
 			if checkRoundPlusOne.Cmp(lastRecoveredRoundNext) <= 0 {
-				if checkRoundPlusOne.Cmp(lastFulfilledRound) <= 0 {
+				if checkRoundPlusOne.Cmp(lastFulfilledRoundNext) <= 0 {
 					color.New(color.FgHiGreen, color.Bold).Printf("Checking round: %s - Process completed successfully\n", checkRound)
 				} else {
 					isMyHashMin, leader, _ := l.FindMinHashAndCompare(ctx, checkRound, walletAddress)
@@ -294,7 +295,6 @@ func (l *PoFListener) CheckRoundCondition() error {
 					}
 				}
 			} else {
-				// Recover 되어 있지 않다면?
 				if commitCounts < 2 {
 					if !time.Now().After(commitDeadline) {
 						l.initiateCommitProcess(checkRound)
