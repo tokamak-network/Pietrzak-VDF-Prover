@@ -12,6 +12,7 @@ type Config struct {
 	PrivateKey      string `json:"PrivateKey"`
 	ContractAddress string `json:"ContractAddress"`
 	WalletAddress   string `json:"WalletAddress"`
+	SubgraphURL     string `json:"SubgraphURL"`
 }
 
 func LoadConfig() Config {

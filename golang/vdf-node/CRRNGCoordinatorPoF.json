@@ -220,7 +220,7 @@
     },
     {
       "inputs": [],
-      "name": "StillInCommitStage",
+      "name": "StillInCommitPhase",
       "type": "error"
     },
     {
@@ -950,7 +950,7 @@
             },
             {
               "internalType": "bool",
-              "name": "isCompleted",
+              "name": "isRecovered",
               "type": "bool"
             },
             {
