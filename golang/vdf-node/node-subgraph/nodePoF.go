@@ -210,7 +210,7 @@ func GetRandomWordRequested() (*RoundResults, error) {
 		}
 
 		// Re-Request
-		if commitPhaseEndTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && validCommitCount < 2 {
+		if isPreviouseRoundRecovered && commitPhaseEndTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && validCommitCount < 2 {
 			results.ReRequestableRounds = append(results.ReRequestableRounds, item.Round)
 		}
 
