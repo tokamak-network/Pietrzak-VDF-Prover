@@ -172,13 +172,33 @@ func GetRandomWordRequested() (*RoundResults, error) {
 
 		isMyAddressLeader, _, _ := FindOffChainLeaderAtRound(item.Round)
 
+		var isPreviouseRoundRecovered bool
+		previousRoundInt, err := strconv.Atoi(item.Round)
+		if err != nil {
+			log.Printf("Error converting round to int: %v", err)
+			continue
+		}
+
+		previousRound := strconv.Itoa(previousRoundInt - 1)
+		previousRoundData, err := GetRecoveredData(previousRound)
+		if err != nil {
+			log.Printf("Error retrieving recovered data for previous round %s: %v", previousRound, err)
+		} else {
+			for _, data := range previousRoundData {
+				if data.IsRecovered {
+					isPreviouseRoundRecovered = true
+					break
+				}
+			}
+		}
+
 		// Recover
 		if isMyAddressLeader && isCommitSender && commitPhaseEndTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && !item.RoundInfo.IsFulfillExecuted && validCommitCount > 1 {
 			results.RecoverableRounds = append(results.RecoverableRounds, item.Round)
 		}
 
 		// Commit
-		if time.Now().Before(commitPhaseEndTime) && !item.RoundInfo.IsRecovered {
+		if isPreviouseRoundRecovered && time.Now().Before(commitPhaseEndTime) && !item.RoundInfo.IsRecovered {
 			if !isCommitSender {
 				results.CommittableRounds = append(results.CommittableRounds, item.Round)
 			}
@@ -497,13 +517,16 @@ func GetRecoveredData(round string) ([]RecoveredData, error) {
 	// Create a new GraphQL request
 	req := graphql.NewRequest(`
         query MyQuery($round: String!) {
-          recovereds(orderBy: blockTimestamp, orderDirection: desc, where: {round: $round}) {
+          recovereds(orderBy: blockTimestamp, orderDirection: asc, where: {round: $round}) {
             round
             blockTimestamp
             id
             msgSender
             omega
           }
+		roundInfos {
+			isRecovered
+		  }
         }`)
 
 	// Set the variable for the round
@@ -511,7 +534,16 @@ func GetRecoveredData(round string) ([]RecoveredData, error) {
 
 	// Define a structure to hold the query response
 	var respData struct {
-		Recovereds []RecoveredData `json:"recovereds"`
+		Recovereds []struct {
+			Round          string `json:"round"`
+			BlockTimestamp string `json:"blockTimestamp"`
+			ID             string `json:"id"`
+			MsgSender      string `json:"msgSender"`
+			Omega          string `json:"omega"`
+			RoundInfos     []struct {
+				IsRecovered bool `json:"isRecovered"`
+			} `json:"roundInfos"`
+		} `json:"recovereds"`
 	}
 
 	ctx := context.Background()
@@ -525,7 +557,23 @@ func GetRecoveredData(round string) ([]RecoveredData, error) {
 	//		recovered.Round, recovered.BlockTimestamp, recovered.ID, recovered.MsgSender, recovered.Omega)
 	//}
 
-	return respData.Recovereds, nil
+	var recoveredData []RecoveredData
+	for _, item := range respData.Recovereds {
+		var isRecovered bool
+		if len(item.RoundInfos) > 0 {
+			isRecovered = item.RoundInfos[0].IsRecovered
+		}
+		recoveredData = append(recoveredData, RecoveredData{
+			Round:          item.Round,
+			BlockTimestamp: item.BlockTimestamp,
+			ID:             item.ID,
+			MsgSender:      item.MsgSender,
+			Omega:          item.Omega,
+			IsRecovered:    isRecovered,
+		})
+	}
+
+	return recoveredData, nil
 }
 
 func GetSetupValue() SetupValues {

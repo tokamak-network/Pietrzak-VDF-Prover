@@ -27,6 +27,7 @@ type RecoveredData struct {
 	ID             string `json:"id"`
 	MsgSender      string `json:"msgSender"`
 	Omega          string `json:"omega"`
+	IsRecovered    bool   `json:"isRecovered"`
 }
 
 type PoFClient struct {
