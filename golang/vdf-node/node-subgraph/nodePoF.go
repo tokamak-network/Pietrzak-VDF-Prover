@@ -151,22 +151,29 @@ func GetRandomWordRequested() (*RoundResults, error) {
 		}
 
 		getCommitData, err := GetCommitData(item.Round)
-		var commitSender common.Address
-		var isCommitSender bool
 		if err != nil {
-			log.Printf("Error retrieving recovered data for round %s: %v", item.Round, err)
+			log.Printf("Error retrieving commit data for round %s: %v", item.Round, err)
 		}
+
+		var commitSenders []common.Address
+		var isCommitSender bool
 
 		for _, data := range getCommitData {
-			commitSender = common.HexToAddress(data.MsgSender)
+			commitSender := common.HexToAddress(data.MsgSender)
+			commitSenders = append(commitSenders, commitSender)
 		}
 
-		if commitSender == common.HexToAddress(config.WalletAddress) {
-			isCommitSender = true
+		for _, commitSender := range commitSenders {
+			if commitSender == common.HexToAddress(config.WalletAddress) {
+				isCommitSender = true
+				break
+			}
 		}
+
+		isMyAddressLeader, _, _ := FindOffChainLeaderAtRound(item.Round)
 
 		// Recover
-		if isCommitSender && commitPhaseEndTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && !item.RoundInfo.IsFulfillExecuted && validCommitCount > 1 {
+		if isMyAddressLeader && isCommitSender && commitPhaseEndTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && !item.RoundInfo.IsFulfillExecuted && validCommitCount > 1 {
 			results.RecoverableRounds = append(results.RecoverableRounds, item.Round)
 		}
 
@@ -178,7 +185,7 @@ func GetRandomWordRequested() (*RoundResults, error) {
 		}
 
 		// Fulfill
-		if isCommitSender && recoverPhaseEndTime.Before(time.Now()) && item.RoundInfo.IsRecovered && !item.RoundInfo.IsFulfillExecuted && validCommitCount > 1 {
+		if isMyAddressLeader && isCommitSender && recoverPhaseEndTime.Before(time.Now()) && item.RoundInfo.IsRecovered && !item.RoundInfo.IsFulfillExecuted && validCommitCount > 1 {
 			results.FulfillableRounds = append(results.FulfillableRounds, item.Round)
 		}
 
@@ -188,12 +195,12 @@ func GetRandomWordRequested() (*RoundResults, error) {
 		}
 
 		// Dispute Recover
-		if isCommitSender && time.Now().Before(recoverPhaseEndTime) && item.RoundInfo.IsRecovered && !item.RoundInfo.IsFulfillExecuted {
+		if !isMyAddressLeader && isCommitSender && time.Now().Before(recoverPhaseEndTime) && item.RoundInfo.IsRecovered && !item.RoundInfo.IsFulfillExecuted {
 			results.RecoverDisputeableRounds = append(results.RecoverDisputeableRounds, item.Round)
 		}
 
 		// Dispute Leadership
-		if isCommitSender && time.Now().Before(recoverPhaseEndTime) && item.RoundInfo.IsRecovered && item.RoundInfo.IsFulfillExecuted {
+		if !isMyAddressLeader && isCommitSender && time.Now().Before(recoverPhaseEndTime) && item.RoundInfo.IsRecovered && item.RoundInfo.IsFulfillExecuted {
 			results.LeadershipDisputeableRounds = append(results.LeadershipDisputeableRounds, item.Round)
 		}
 	}
@@ -332,9 +339,9 @@ func (l *PoFClient) ProcessRoundResults() error {
 			for _, data := range recoveredData {
 				msgSender = common.HexToAddress(data.MsgSender)
 				omega = new(big.Int)
-				omega, ok := omega.SetString(data.Omega, 10)
+				omega, ok := omega.SetString(data.Omega[2:], 16)
 				if !ok {
-					log.Printf("Failed to parse omega for round %s: %v", roundStr, data.Omega)
+					log.Printf("Failed to parse omega for round %s: %s", roundStr, data.Omega)
 					continue
 				}
 
