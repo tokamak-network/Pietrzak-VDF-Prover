@@ -135,6 +135,7 @@ func GetRandomWordRequested() (*RoundResults, error) {
 
 		recoveredData, err := GetRecoveredData(item.Round)
 		var recoverPhaseEndTime time.Time
+		var isRecovered bool
 		if err != nil {
 			log.Printf("Error retrieving recovered data for round %s: %v", item.Round, err)
 		}
@@ -145,6 +146,8 @@ func GetRandomWordRequested() (*RoundResults, error) {
 				log.Printf("Failed to parse block timestamp for round %s: %v", item.Round, err)
 				continue
 			}
+
+			isRecovered = data.IsRecovered
 
 			blockTime := time.Unix(blockTimestamp, 0)
 			recoverPhaseEndTime = blockTime.Add(DisputeDuration * time.Second)
@@ -193,7 +196,7 @@ func GetRandomWordRequested() (*RoundResults, error) {
 		}
 
 		// Recover
-		if isMyAddressLeader && isCommitSender && commitPhaseEndTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && !item.RoundInfo.IsFulfillExecuted && validCommitCount > 1 {
+		if !isRecovered && isMyAddressLeader && isCommitSender && commitPhaseEndTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && !item.RoundInfo.IsFulfillExecuted && validCommitCount > 1 {
 			results.RecoverableRounds = append(results.RecoverableRounds, item.Round)
 		}
 
@@ -215,14 +218,14 @@ func GetRandomWordRequested() (*RoundResults, error) {
 		}
 
 		// Dispute Recover
-		if !isMyAddressLeader && isCommitSender && time.Now().Before(recoverPhaseEndTime) && item.RoundInfo.IsRecovered && !item.RoundInfo.IsFulfillExecuted {
-			results.RecoverDisputeableRounds = append(results.RecoverDisputeableRounds, item.Round)
-		}
-
-		// Dispute Leadership
-		if !isMyAddressLeader && isCommitSender && time.Now().Before(recoverPhaseEndTime) && item.RoundInfo.IsRecovered && item.RoundInfo.IsFulfillExecuted {
-			results.LeadershipDisputeableRounds = append(results.LeadershipDisputeableRounds, item.Round)
-		}
+		//if !isMyAddressLeader && isCommitSender && time.Now().Before(recoverPhaseEndTime) && item.RoundInfo.IsRecovered && !item.RoundInfo.IsFulfillExecuted {
+		//	results.RecoverDisputeableRounds = append(results.RecoverDisputeableRounds, item.Round)
+		//}
+		//
+		//// Dispute Leadership
+		//if !isMyAddressLeader && isCommitSender && time.Now().Before(recoverPhaseEndTime) && item.RoundInfo.IsRecovered && item.RoundInfo.IsFulfillExecuted {
+		//	results.LeadershipDisputeableRounds = append(results.LeadershipDisputeableRounds, item.Round)
+		//}
 	}
 
 	fmt.Println("---------------------------------------------------------------------------")
