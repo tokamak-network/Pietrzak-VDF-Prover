@@ -172,7 +172,9 @@ func GetRandomWordRequested() (*RoundResults, error) {
 
 		// Commit
 		if time.Now().Before(commitPhaseEndTime) && !item.RoundInfo.IsRecovered {
-			results.CommittableRounds = append(results.CommittableRounds, item.Round)
+			if !isCommitSender {
+				results.CommittableRounds = append(results.CommittableRounds, item.Round)
+			}
 		}
 
 		// Fulfill
