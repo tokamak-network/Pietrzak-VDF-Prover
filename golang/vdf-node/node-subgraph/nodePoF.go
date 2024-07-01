@@ -243,19 +243,9 @@ func GetRandomWordRequested() (*RoundResults, error) {
 			}
 		}
 
-		// Re-request
-		if isPreviousRoundRecovered && commitPhaseEndTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && validCommitCount < 2 && commitCount > 0 {
-			if !containsRound(results.ReRequestableRounds, item.Round) && !containsRound(results.CommittableRounds, item.Round) {
-				results.ReRequestableRounds = append(results.ReRequestableRounds, item.Round)
-			}
-		}
-
 		// Commit
 		if isPreviousRoundRecovered && !item.RoundInfo.IsRecovered && requestBlockTimestampStr > commitTimeStampStr {
 			if !containsRound(results.CommittableRounds, item.Round) {
-				if containsRound(results.ReRequestableRounds, item.Round) {
-					results.ReRequestableRounds = removeRound(results.ReRequestableRounds, item.Round)
-				}
 				results.CommittableRounds = append(results.CommittableRounds, item.Round)
 			}
 		}
@@ -264,6 +254,13 @@ func GetRandomWordRequested() (*RoundResults, error) {
 		if isMyAddressLeader && isCommitSender && recoverPhaseEndTime.Before(time.Now()) && item.RoundInfo.IsRecovered && !item.RoundInfo.IsFulfillExecuted && validCommitCount > 1 {
 			if !containsRound(results.FulfillableRounds, item.Round) {
 				results.FulfillableRounds = append(results.FulfillableRounds, item.Round)
+			}
+		}
+
+		// Re-request
+		if isPreviousRoundRecovered && commitPhaseEndTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && validCommitCount < 2 && commitCount > 0 {
+			if !containsRound(results.ReRequestableRounds, item.Round) {
+				results.ReRequestableRounds = append(results.ReRequestableRounds, item.Round)
 			}
 		}
 
