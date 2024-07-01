@@ -259,7 +259,7 @@ func GetRandomWordRequested() (*RoundResults, error) {
 		}
 		requestBlockTimestamp := time.Unix(requestBlockTimestampInt, 0)
 
-		requestBlockTimestampEndTime := requestBlockTimestamp.Add(10 * time.Minute)
+		//requestBlockTimestampEndTime := requestBlockTimestamp.Add(10 * time.Minute)
 
 		commitTimeStampInt, err := strconv.ParseInt(commitTimeStampStr, 10, 64)
 		if err != nil {
@@ -291,7 +291,7 @@ func GetRandomWordRequested() (*RoundResults, error) {
 		}
 
 		// re-request
-		if isPreviousRoundRecovered && commitPhaseEndTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && validCommitCount < 2 && commitCount > 0 && requestBlockTimestampEndTime.After(time.Now()) {
+		if isPreviousRoundRecovered && commitPhaseEndTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && validCommitCount < 2 && commitCount > 0 {
 			if !containsRound(results.ReRequestableRounds, item.Round) {
 				results.ReRequestableRounds = append(results.ReRequestableRounds, item.Round)
 			}
