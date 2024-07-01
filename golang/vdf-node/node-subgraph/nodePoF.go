@@ -277,7 +277,7 @@ func GetRandomWordRequested() (*RoundResults, error) {
 		}
 
 		// Commit
-		if isPreviousRoundRecovered && !item.RoundInfo.IsRecovered && myCommitBlockTimestamp.Before(requestBlockTimestamp) {
+		if isPreviousRoundRecovered && !item.RoundInfo.IsRecovered && myCommitBlockTimestamp.Before(requestBlockTimestamp) && commitPhaseEndTime.After(time.Now()) {
 			if !containsRound(results.CommittableRounds, item.Round) {
 				results.CommittableRounds = append(results.CommittableRounds, item.Round)
 			}
