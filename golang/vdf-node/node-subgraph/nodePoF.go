@@ -261,6 +261,10 @@ func GetRandomWordRequested() (*RoundResults, error) {
 
 		requestBlockTimestampEndTime := requestBlockTimestamp.Add(4 * time.Minute)
 
+		if commitTimeStampStr == "" {
+			commitTimeStampStr = "0"
+		}
+
 		commitTimeStampInt, err := strconv.ParseInt(commitTimeStampStr, 10, 64)
 		if err != nil {
 			log.Printf("Error converting commit timestamp to int64: %v", err)
