@@ -85,7 +85,7 @@ func NewPoFClient(config node.Config) (*PoFClient, error) {
 	}, nil
 }
 
-func GetRandomWordRequested() (*RoundResults, error) {
+func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 	config := GetConfig()
 	client := graphql.NewClient(config.SubgraphURL)
 
@@ -188,9 +188,12 @@ func GetRandomWordRequested() (*RoundResults, error) {
 			continue
 		}
 
+		// get recovered data
 		recoveredData, err := GetRecoveredData(item.Round)
 		var recoverPhaseEndTime time.Time
 		var isRecovered bool
+		var omega string
+
 		if err != nil {
 			log.Printf("Error retrieving recovered data for round %s: %v", item.Round, err)
 		}
@@ -203,11 +206,31 @@ func GetRandomWordRequested() (*RoundResults, error) {
 			}
 
 			isRecovered = data.IsRecovered
-
+			omega = data.Omega
 			blockTime := time.Unix(blockTimestamp, 0)
 			recoverPhaseEndTime = blockTime.Add(DisputeDuration * time.Second)
 		}
 
+		// get fulfilled data
+		fulfillData, err := GetFulfillRandomnessData(item.Round)
+
+		//var isFulfillSuccess bool
+		var fulfillSender string
+
+		if err != nil {
+			log.Printf("Error retrieving fulfill randomness data for round %s: %v", item.Round, err)
+			//isFulfillSuccess = false
+		} else {
+			for _, data := range fulfillData {
+				if data.Success {
+					//isFulfillSuccess = true
+					fulfillSender = data.MsgSender
+					break
+				}
+			}
+		}
+
+		// get committed data
 		getCommitData, err := GetCommitData(item.Round)
 		if err != nil {
 			log.Printf("Error retrieving commit data for round %s: %v", item.Round, err)
@@ -230,7 +253,7 @@ func GetRandomWordRequested() (*RoundResults, error) {
 			}
 		}
 
-		isMyAddressLeader, _, _ := FindOffChainLeaderAtRound(item.Round)
+		isMyAddressLeader, leaderAddress, _ := FindOffChainLeaderAtRound(item.Round)
 
 		var isPreviousRoundRecovered bool
 		previousRoundInt, err := strconv.Atoi(item.Round)
@@ -310,19 +333,44 @@ func GetRandomWordRequested() (*RoundResults, error) {
 			}
 		}
 
-		//// Dispute Recover
-		//if !isMyAddressLeader && isCommitSender && time.Now().Before(recoverPhaseEndTime) && item.RoundInfo.IsRecovered && !item.RoundInfo.IsFulfillExecuted {
-		//	if !containsRound(results.RecoverDisputeableRounds, item.Round) {
-		//		results.RecoverDisputeableRounds = append(results.RecoverDisputeableRounds, item.Round)
-		//	}
-		//}
-		//
-		//// Dispute Leadership
-		//if !isMyAddressLeader && isCommitSender && time.Now().Before(recoverPhaseEndTime) && item.RoundInfo.IsRecovered && item.RoundInfo.IsFulfillExecuted {
-		//	if !containsRound(results.LeadershipDisputeableRounds, item.Round) {
-		//		results.LeadershipDisputeableRounds = append(results.LeadershipDisputeableRounds, item.Round)
-		//	}
-		//}
+		// Dispute Recover
+		if !isMyAddressLeader && isCommitSender && time.Now().Before(recoverPhaseEndTime) && item.RoundInfo.IsRecovered && !item.RoundInfo.IsFulfillExecuted {
+			roundBigInt := new(big.Int)
+			roundBigInt.SetString(item.Round, 10)
+
+			recoveryResult, err := l.BeforeRecoverPhase(roundStr)
+			if err != nil {
+				log.Printf("Error in BeforeRecoverPhase: %v", err)
+			}
+
+			omegaBigInt := new(big.Int)
+			if _, ok := omegaBigInt.SetString(omega, 16); !ok {
+				log.Printf("Failed to parse omega: %s", omega)
+			}
+
+			if omegaBigInt.Cmp(recoveryResult.OmegaRecov) != 0 {
+				if _, exists := roundStatus.Load(roundStr + ":DisputeRecovered"); !exists {
+					if !containsRound(results.RecoverDisputeableRounds, roundStr) {
+						results.RecoverDisputeableRounds = append(results.RecoverDisputeableRounds, roundStr)
+						roundStatus.Store(roundStr+":DisputeRecovered", "Processed")
+					}
+				}
+			}
+		}
+
+		// Dispute Leadership
+		if !isMyAddressLeader && isCommitSender && time.Now().Before(recoverPhaseEndTime) && item.RoundInfo.IsRecovered && item.RoundInfo.IsFulfillExecuted {
+			fulfillSenderAddress := common.HexToAddress(fulfillSender)
+
+			if fulfillSenderAddress != leaderAddress {
+				if _, exists := roundStatus.Load(roundStr + ":DisputeLeadershiped"); !exists {
+					if !containsRound(results.LeadershipDisputeableRounds, roundStr) {
+						results.LeadershipDisputeableRounds = append(results.LeadershipDisputeableRounds, roundStr)
+						roundStatus.Store(roundStr+":DisputeLeadershiped", "Processed")
+					}
+				}
+			}
+		}
 	}
 
 	fmt.Println("---------------------------------------------------------------------------")
@@ -349,30 +397,6 @@ func containsRound(rounds []string, round string) bool {
 	return false
 }
 
-func removeRound(rounds []string, round string) []string {
-	for i, r := range rounds {
-		if r == round {
-			return append(rounds[:i], rounds[i+1:]...)
-		}
-	}
-	return rounds
-}
-
-func StoreRoundStatus(round string, status string) {
-	roundStatus.Store(round, status)
-}
-
-func GetRoundStatus(round string) string {
-	if status, ok := roundStatus.Load(round); ok {
-		return status.(string)
-	}
-	return "Unknown"
-}
-
-func DeleteRoundStatus(round string) {
-	roundStatus.Delete(round)
-}
-
 func (l *PoFClient) ProcessRoundResults() error {
 	config := GetConfig()
 	isOperator, err := IsOperator(config.WalletAddress)
@@ -386,7 +410,7 @@ func (l *PoFClient) ProcessRoundResults() error {
 		l.OperatorDeposit(ctx)
 	}
 
-	results, err := GetRandomWordRequested()
+	results, err := l.GetRandomWordRequested()
 	if err != nil {
 		log.Printf("Error fetching round results: %v", err)
 		return err
@@ -695,6 +719,47 @@ func GetRecoveredData(round string) ([]RecoveredData, error) {
 	}
 
 	return recoveredData, nil
+}
+
+func GetFulfillRandomnessData(round string) ([]FulfillRandomnessData, error) {
+	config := GetConfig()
+	client := graphql.NewClient(config.SubgraphURL)
+
+	req := graphql.NewRequest(`
+        query MyQuery($round: String!) {
+          fulfillRandomnesses(where: {round: $round}) {
+            msgSender
+            blockTimestamp
+            success
+          }
+        }`)
+
+	req.Var("round", round)
+
+	var respData struct {
+		FulfillRandomnesses []struct {
+			MsgSender      string `json:"msgSender"`
+			BlockTimestamp string `json:"blockTimestamp"`
+			Success        bool   `json:"success"`
+		} `json:"fulfillRandomnesses"`
+	}
+
+	ctx := context.Background()
+	if err := client.Run(ctx, req, &respData); err != nil {
+		log.Printf("Failed to execute query: %v", err)
+		return nil, err
+	}
+
+	var fulfillRandomnessData []FulfillRandomnessData
+	for _, item := range respData.FulfillRandomnesses {
+		fulfillRandomnessData = append(fulfillRandomnessData, FulfillRandomnessData{
+			MsgSender:      item.MsgSender,
+			BlockTimestamp: item.BlockTimestamp,
+			Success:        item.Success,
+		})
+	}
+
+	return fulfillRandomnessData, nil
 }
 
 func GetSetupValue() SetupValues {
@@ -1106,7 +1171,7 @@ func (l *PoFClient) DisputeLeadershipAtRound(ctx context.Context, round *big.Int
 		return fmt.Errorf("%s", errMsg)
 	}
 
-	roundStatus.Store(round.String(), "DisputeLeadership")
+	roundStatus.Store(round.String(), "DisputeLeadershiped")
 
 	color.New(color.FgHiGreen, color.Bold).Printf("✅  Dispute leadership successful!!\n🔗 Tx Hash: %s\n", signedTx.Hash().Hex())
 	return nil

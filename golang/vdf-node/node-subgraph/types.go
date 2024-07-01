@@ -30,6 +30,12 @@ type RecoveredData struct {
 	IsRecovered    bool   `json:"isRecovered"`
 }
 
+type FulfillRandomnessData struct {
+	MsgSender      string
+	BlockTimestamp string
+	Success        bool
+}
+
 type PoFClient struct {
 	Client          *ethclient.Client
 	ContractAddress common.Address
