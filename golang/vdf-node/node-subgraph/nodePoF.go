@@ -503,7 +503,7 @@ func FindOffChainLeaderAtRound(round string) (bool, common.Address, error) {
 		return false, common.Address{}, err
 	}
 
-	roundPrefix := fmt.Sprintf("Round %s - ", round) // Creating a prefix string
+	//roundPrefix := fmt.Sprintf("Round %s - ", round) // Creating a prefix string
 
 	var minHash *big.Int
 	var leaderAddress common.Address
@@ -526,17 +526,17 @@ func FindOffChainLeaderAtRound(round string) (bool, common.Address, error) {
 	}
 
 	isMyAddressLeader := myHash != nil && myHash.Cmp(minHash) == 0 && mySender == leaderAddress
-	if isMyAddressLeader {
-		fmt.Println("---------------------------------------------------------------------------")
-		color.New(color.FgHiGreen, color.Bold).Printf("%sMy sender's address has the min hash\n", roundPrefix)
-		color.New(color.FgHiGreen, color.Bold).Printf("%s👑 I am the leader\n", roundPrefix)
-		fmt.Println("---------------------------------------------------------------------------")
-	} else {
-		fmt.Println("---------------------------------------------------------------------------")
-		color.New(color.FgHiRed, color.Bold).Printf("%sMy sender's address does not have the min hash.\n", roundPrefix)
-		color.New(color.FgHiRed, color.Bold).Printf("%s😢 I am not the leader.\n", roundPrefix)
-		fmt.Println("---------------------------------------------------------------------------")
-	}
+	//if isMyAddressLeader {
+	//	fmt.Println("---------------------------------------------------------------------------")
+	//	color.New(color.FgHiGreen, color.Bold).Printf("%sMy sender's address has the min hash\n", roundPrefix)
+	//	color.New(color.FgHiGreen, color.Bold).Printf("%s👑 I am the leader\n", roundPrefix)
+	//	fmt.Println("---------------------------------------------------------------------------")
+	//} else {
+	//	fmt.Println("---------------------------------------------------------------------------")
+	//	color.New(color.FgHiRed, color.Bold).Printf("%sMy sender's address does not have the min hash.\n", roundPrefix)
+	//	color.New(color.FgHiRed, color.Bold).Printf("%s😢 I am not the leader.\n", roundPrefix)
+	//	fmt.Println("---------------------------------------------------------------------------")
+	//}
 
 	return isMyAddressLeader, leaderAddress, nil
 }
