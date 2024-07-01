@@ -20,6 +20,7 @@ import (
 	"io/ioutil"
 	"log"
 	"math/big"
+	"sort"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -108,6 +109,26 @@ func GetRandomWordRequested() (*RoundResults, error) {
 		return nil, err
 	}
 
+	var rounds []struct {
+		RoundInt int
+		Data     RandomWordRequestedStruct
+	}
+	for _, item := range respData.RandomWordsRequested {
+		roundInt, err := strconv.Atoi(item.Round)
+		if err != nil {
+			log.Printf("Error converting round to int: %s, %v", item.Round, err)
+			continue
+		}
+		rounds = append(rounds, struct {
+			RoundInt int
+			Data     RandomWordRequestedStruct
+		}{RoundInt: roundInt, Data: item})
+	}
+
+	sort.Slice(rounds, func(i, j int) bool {
+		return rounds[i].RoundInt < rounds[j].RoundInt
+	})
+
 	results := &RoundResults{
 		RecoverableRounds:           []string{},
 		CommittableRounds:           []string{},
@@ -119,13 +140,19 @@ func GetRandomWordRequested() (*RoundResults, error) {
 	}
 
 	for _, item := range respData.RandomWordsRequested {
-		blockTimestamp, err := strconv.ParseInt(item.BlockTimestamp, 10, 64)
+		//blockTimestamp, err := strconv.ParseInt(item.BlockTimestamp, 10, 64)
+		//if err != nil {
+		//	log.Printf("Error converting BlockTimestamp to int64: %v", err)
+		//	continue
+		//}
+		//blockTime := time.Unix(blockTimestamp, 0)
+		//commitPhaseEndTime := blockTime.Add(CommitDuration * time.Second)
+
+		commitCount, err := strconv.Atoi(item.RoundInfo.CommitCount)
 		if err != nil {
-			log.Printf("Error converting BlockTimestamp to int64: %v", err)
+			log.Printf("Error converting ValidCommitCount to int: %v", err)
 			continue
 		}
-		blockTime := time.Unix(blockTimestamp, 0)
-		commitPhaseEndTime := blockTime.Add(CommitDuration * time.Second)
 
 		validCommitCount, err := strconv.Atoi(item.RoundInfo.ValidCommitCount)
 		if err != nil {
@@ -160,10 +187,12 @@ func GetRandomWordRequested() (*RoundResults, error) {
 
 		var commitSenders []common.Address
 		var isCommitSender bool
+		var commitTimeStampStr string
 
 		for _, data := range getCommitData {
 			commitSender := common.HexToAddress(data.MsgSender)
 			commitSenders = append(commitSenders, commitSender)
+			commitTimeStampStr = data.BlockTimestamp
 		}
 
 		for _, commitSender := range commitSenders {
@@ -175,7 +204,7 @@ func GetRandomWordRequested() (*RoundResults, error) {
 
 		isMyAddressLeader, _, _ := FindOffChainLeaderAtRound(item.Round)
 
-		var isPreviouseRoundRecovered bool
+		var isPreviousRoundRecovered bool
 		previousRoundInt, err := strconv.Atoi(item.Round)
 		if err != nil {
 			log.Printf("Error converting round to int: %v", err)
@@ -183,48 +212,73 @@ func GetRandomWordRequested() (*RoundResults, error) {
 		}
 
 		previousRound := strconv.Itoa(previousRoundInt - 1)
+
 		previousRoundData, err := GetRecoveredData(previousRound)
 		if err != nil {
 			log.Printf("Error retrieving recovered data for previous round %s: %v", previousRound, err)
 		} else {
+			isPreviousRoundRecovered = false
 			for _, data := range previousRoundData {
 				if data.IsRecovered {
-					isPreviouseRoundRecovered = true
+					isPreviousRoundRecovered = true
 					break
 				}
 			}
 		}
 
+		requestBlockTimestampStr := item.BlockTimestamp
+
+		commitTimeStampInt, err := strconv.ParseInt(commitTimeStampStr, 10, 64)
+		if err != nil {
+			log.Printf("Error converting commit timestamp to int64: %v", err)
+			return nil, err
+		}
+		commitTimeStampTime := time.Unix(commitTimeStampInt, 0)
+		commitPhaseEndTime := commitTimeStampTime.Add(time.Duration(CommitDuration) * time.Second)
+
 		// Recover
 		if !isRecovered && isMyAddressLeader && isCommitSender && commitPhaseEndTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && !item.RoundInfo.IsFulfillExecuted && validCommitCount > 1 {
-			results.RecoverableRounds = append(results.RecoverableRounds, item.Round)
+			if !containsRound(results.RecoverableRounds, item.Round) {
+				results.RecoverableRounds = append(results.RecoverableRounds, item.Round)
+			}
+		}
+
+		// Re-request
+		if isPreviousRoundRecovered && commitPhaseEndTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && validCommitCount < 2 && commitCount > 0 {
+			if !containsRound(results.ReRequestableRounds, item.Round) && !containsRound(results.CommittableRounds, item.Round) {
+				results.ReRequestableRounds = append(results.ReRequestableRounds, item.Round)
+			}
 		}
 
 		// Commit
-		if isPreviouseRoundRecovered && time.Now().Before(commitPhaseEndTime) && !item.RoundInfo.IsRecovered {
-			if !isCommitSender {
+		if isPreviousRoundRecovered && !item.RoundInfo.IsRecovered && requestBlockTimestampStr > commitTimeStampStr {
+			if !containsRound(results.CommittableRounds, item.Round) {
+				if containsRound(results.ReRequestableRounds, item.Round) {
+					results.ReRequestableRounds = removeRound(results.ReRequestableRounds, item.Round)
+				}
 				results.CommittableRounds = append(results.CommittableRounds, item.Round)
 			}
 		}
 
 		// Fulfill
 		if isMyAddressLeader && isCommitSender && recoverPhaseEndTime.Before(time.Now()) && item.RoundInfo.IsRecovered && !item.RoundInfo.IsFulfillExecuted && validCommitCount > 1 {
-			results.FulfillableRounds = append(results.FulfillableRounds, item.Round)
+			if !containsRound(results.FulfillableRounds, item.Round) {
+				results.FulfillableRounds = append(results.FulfillableRounds, item.Round)
+			}
 		}
 
-		// Re-Request
-		if isPreviouseRoundRecovered && commitPhaseEndTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && validCommitCount < 2 {
-			results.ReRequestableRounds = append(results.ReRequestableRounds, item.Round)
-		}
-
-		// Dispute Recover
+		//// Dispute Recover
 		//if !isMyAddressLeader && isCommitSender && time.Now().Before(recoverPhaseEndTime) && item.RoundInfo.IsRecovered && !item.RoundInfo.IsFulfillExecuted {
-		//	results.RecoverDisputeableRounds = append(results.RecoverDisputeableRounds, item.Round)
+		//	if !containsRound(results.RecoverDisputeableRounds, item.Round) {
+		//		results.RecoverDisputeableRounds = append(results.RecoverDisputeableRounds, item.Round)
+		//	}
 		//}
 		//
 		//// Dispute Leadership
 		//if !isMyAddressLeader && isCommitSender && time.Now().Before(recoverPhaseEndTime) && item.RoundInfo.IsRecovered && item.RoundInfo.IsFulfillExecuted {
-		//	results.LeadershipDisputeableRounds = append(results.LeadershipDisputeableRounds, item.Round)
+		//	if !containsRound(results.LeadershipDisputeableRounds, item.Round) {
+		//		results.LeadershipDisputeableRounds = append(results.LeadershipDisputeableRounds, item.Round)
+		//	}
 		//}
 	}
 
@@ -241,6 +295,24 @@ func GetRandomWordRequested() (*RoundResults, error) {
 	fmt.Println("---------------------------------------------------------------------------")
 
 	return results, nil
+}
+
+func containsRound(rounds []string, round string) bool {
+	for _, r := range rounds {
+		if r == round {
+			return true
+		}
+	}
+	return false
+}
+
+func removeRound(rounds []string, round string) []string {
+	for i, r := range rounds {
+		if r == round {
+			return append(rounds[:i], rounds[i+1:]...)
+		}
+	}
+	return rounds
 }
 
 func (l *PoFClient) ProcessRoundResults() error {
@@ -517,7 +589,6 @@ func GetRecoveredData(round string) ([]RecoveredData, error) {
 	config := GetConfig()
 	client := graphql.NewClient(config.SubgraphURL)
 
-	// Create a new GraphQL request
 	req := graphql.NewRequest(`
         query MyQuery($round: String!) {
           recovereds(orderBy: blockTimestamp, orderDirection: asc, where: {round: $round}) {
@@ -526,16 +597,14 @@ func GetRecoveredData(round string) ([]RecoveredData, error) {
             id
             msgSender
             omega
+            roundInfo {
+              isRecovered
+            }
           }
-		roundInfos {
-			isRecovered
-		  }
         }`)
 
-	// Set the variable for the round
 	req.Var("round", round)
 
-	// Define a structure to hold the query response
 	var respData struct {
 		Recovereds []struct {
 			Round          string `json:"round"`
@@ -543,9 +612,9 @@ func GetRecoveredData(round string) ([]RecoveredData, error) {
 			ID             string `json:"id"`
 			MsgSender      string `json:"msgSender"`
 			Omega          string `json:"omega"`
-			RoundInfos     []struct {
+			RoundInfo      struct {
 				IsRecovered bool `json:"isRecovered"`
-			} `json:"roundInfos"`
+			} `json:"roundInfo"`
 		} `json:"recovereds"`
 	}
 
@@ -555,24 +624,15 @@ func GetRecoveredData(round string) ([]RecoveredData, error) {
 		return nil, err
 	}
 
-	//for _, recovered := range respData.Recovereds {
-	//	fmt.Printf("Recovered: Round: %s, Timestamp: %s, ID: %s, Sender: %s, Omega: %s\n",
-	//		recovered.Round, recovered.BlockTimestamp, recovered.ID, recovered.MsgSender, recovered.Omega)
-	//}
-
 	var recoveredData []RecoveredData
 	for _, item := range respData.Recovereds {
-		var isRecovered bool
-		if len(item.RoundInfos) > 0 {
-			isRecovered = item.RoundInfos[0].IsRecovered
-		}
 		recoveredData = append(recoveredData, RecoveredData{
 			Round:          item.Round,
 			BlockTimestamp: item.BlockTimestamp,
 			ID:             item.ID,
 			MsgSender:      item.MsgSender,
 			Omega:          item.Omega,
-			IsRecovered:    isRecovered,
+			IsRecovered:    item.RoundInfo.IsRecovered,
 		})
 	}
 
