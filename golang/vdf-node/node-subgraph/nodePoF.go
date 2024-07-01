@@ -23,9 +23,12 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"text/tabwriter"
 	"time"
 )
+
+var roundStatus sync.Map
 
 func loadContractABI(filename string) (abi.ABI, error) {
 	fileContent, err := ioutil.ReadFile(filename)
@@ -273,31 +276,37 @@ func GetRandomWordRequested() (*RoundResults, error) {
 		commitTimeStampTime := time.Unix(commitTimeStampInt, 0)
 		commitPhaseEndTime := commitTimeStampTime.Add(time.Duration(CommitDuration) * time.Second)
 
+		roundStr := item.Round
+
 		// Recover
 		if !isRecovered && isMyAddressLeader && isCommitSender && commitPhaseEndTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && !item.RoundInfo.IsFulfillExecuted && validCommitCount > 1 {
-			if !containsRound(results.RecoverableRounds, item.Round) {
-				results.RecoverableRounds = append(results.RecoverableRounds, item.Round)
+			if _, exists := roundStatus.Load(roundStr + ":Recovered"); !exists {
+				results.RecoverableRounds = append(results.RecoverableRounds, roundStr)
+				roundStatus.Store(roundStr+":Recovered", "Processed")
 			}
 		}
 
 		// Commit
 		if isPreviousRoundRecovered && !item.RoundInfo.IsRecovered && myCommitBlockTimestamp.Before(requestBlockTimestamp) {
-			if !containsRound(results.CommittableRounds, item.Round) {
-				results.CommittableRounds = append(results.CommittableRounds, item.Round)
+			if _, exists := roundStatus.Load(roundStr + ":Committed"); !exists {
+				results.CommittableRounds = append(results.CommittableRounds, roundStr)
+				roundStatus.Store(roundStr+":Committed", "Processed")
 			}
 		}
 
 		// Fulfill
 		if isMyAddressLeader && isCommitSender && recoverPhaseEndTime.Before(time.Now()) && item.RoundInfo.IsRecovered && !item.RoundInfo.IsFulfillExecuted && validCommitCount > 1 {
-			if !containsRound(results.FulfillableRounds, item.Round) {
-				results.FulfillableRounds = append(results.FulfillableRounds, item.Round)
+			if _, exists := roundStatus.Load(roundStr + ":Fulfilled"); !exists {
+				results.FulfillableRounds = append(results.FulfillableRounds, roundStr)
+				roundStatus.Store(roundStr+":Fulfilled", "Processed")
 			}
 		}
 
-		// re-request
+		// Re-request
 		if isPreviousRoundRecovered && commitPhaseEndTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && validCommitCount < 2 && validCommitCount > 0 {
-			if !containsRound(results.ReRequestableRounds, item.Round) {
-				results.ReRequestableRounds = append(results.ReRequestableRounds, item.Round)
+			if _, exists := roundStatus.Load(roundStr + ":ReRequested"); !exists {
+				results.ReRequestableRounds = append(results.ReRequestableRounds, roundStr)
+				roundStatus.Store(roundStr+":ReRequested", "Processed")
 			}
 		}
 
@@ -347,6 +356,21 @@ func removeRound(rounds []string, round string) []string {
 		}
 	}
 	return rounds
+}
+
+func StoreRoundStatus(round string, status string) {
+	roundStatus.Store(round, status)
+}
+
+func GetRoundStatus(round string) string {
+	if status, ok := roundStatus.Load(round); ok {
+		return status.(string)
+	}
+	return "Unknown"
+}
+
+func DeleteRoundStatus(round string) {
+	roundStatus.Delete(round)
 }
 
 func (l *PoFClient) ProcessRoundResults() error {
@@ -843,6 +867,8 @@ func (l *PoFClient) Recover(ctx context.Context, round *big.Int, y BigNumber) er
 		return fmt.Errorf("%s", errMsg)
 	}
 
+	roundStatus.Store(round.String(), "Recovered")
+
 	color.New(color.FgHiGreen, color.Bold).Printf("✅  Recover successful!!\n🔗 Tx Hash: %s\n", signedTx.Hash().Hex())
 	log.Printf("Recover successful! Tx Hash: %s", signedTx.Hash().Hex())
 
@@ -908,6 +934,8 @@ func (l *PoFClient) FulfillRandomness(ctx context.Context, round *big.Int) (*typ
 		return nil, fmt.Errorf("%s", errMsg)
 	}
 
+	roundStatus.Store(round.String(), "Fulfilled")
+
 	color.New(color.FgHiGreen, color.Bold).Printf("✅ FulfillRandomness successful!!\n🔗 Tx Hash: %s\n", signedTx.Hash().Hex())
 	return signedTx, nil
 }
@@ -968,6 +996,8 @@ func (l *PoFClient) ReRequestRandomWordAtRound(ctx context.Context, round *big.I
 		return fmt.Errorf("%s", errMsg)
 	}
 
+	roundStatus.Store(round.String(), "ReRequested")
+
 	color.New(color.FgHiGreen, color.Bold).Printf("✅  Re-request successful!!\n🔗 Tx Hash: %s\n", signedTx.Hash().Hex())
 	return nil
 }
@@ -1019,6 +1049,8 @@ func (l *PoFClient) DisputeRecover(ctx context.Context, round *big.Int, v []BigN
 		log.Printf("❌ %s", errMsg)
 		return nil, fmt.Errorf("%s", errMsg)
 	}
+
+	roundStatus.Store(round.String(), "DisputeRecovered")
 
 	color.New(color.FgHiGreen, color.Bold).Printf("✅  Dispute recover successful!!\n🔗 Tx Hash: %s\n", signedTx.Hash().Hex())
 
@@ -1073,6 +1105,8 @@ func (l *PoFClient) DisputeLeadershipAtRound(ctx context.Context, round *big.Int
 		log.Printf("❌ %s", errMsg)
 		return fmt.Errorf("%s", errMsg)
 	}
+
+	roundStatus.Store(round.String(), "DisputeLeadership")
 
 	color.New(color.FgHiGreen, color.Bold).Printf("✅  Dispute leadership successful!!\n🔗 Tx Hash: %s\n", signedTx.Hash().Hex())
 	return nil
@@ -1150,10 +1184,12 @@ func (l *PoFClient) Commit(ctx context.Context, round *big.Int) (common.Address,
 		return common.Address{}, nil, fmt.Errorf("%s", errMsg)
 	}
 
+	roundStatus.Store(round.String(), "Committed")
+
 	color.New(color.FgHiGreen, color.Bold).Printf("✅  Commit successful!!\n🔗 Tx Hash: %s\n", signedTx.Hash().Hex())
 	fmt.Println("---------------------------------------------------------------------------")
 
-	return auth.From, byteData, nil // Return the sender address and the committed value
+	return auth.From, byteData, nil
 }
 
 func (l *PoFClient) OperatorDeposit(ctx context.Context) (common.Address, *types.Transaction, error) {
