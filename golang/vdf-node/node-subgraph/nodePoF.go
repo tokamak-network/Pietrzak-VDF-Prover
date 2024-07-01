@@ -173,11 +173,11 @@ func GetRandomWordRequested() (*RoundResults, error) {
 			myCommitBlockTimestamp = time.Unix(myCommitBlockTimestampInt, 0)
 		}
 
-		commitCount, err := strconv.Atoi(item.RoundInfo.CommitCount)
-		if err != nil {
-			log.Printf("Error converting ValidCommitCount to int: %v", err)
-			continue
-		}
+		//commitCount, err := strconv.Atoi(item.RoundInfo.CommitCount)
+		//if err != nil {
+		//	log.Printf("Error converting ValidCommitCount to int: %v", err)
+		//	continue
+		//}
 
 		validCommitCount, err := strconv.Atoi(item.RoundInfo.ValidCommitCount)
 		if err != nil {
@@ -259,7 +259,7 @@ func GetRandomWordRequested() (*RoundResults, error) {
 		}
 		requestBlockTimestamp := time.Unix(requestBlockTimestampInt, 0)
 
-		requestBlockTimestampEndTime := requestBlockTimestamp.Add(4 * time.Minute)
+		//requestBlockTimestampEndTime := requestBlockTimestamp.Add(4 * time.Minute)
 
 		if commitTimeStampStr == "" {
 			commitTimeStampStr = "0"
@@ -280,6 +280,9 @@ func GetRandomWordRequested() (*RoundResults, error) {
 			}
 		}
 
+		fmt.Println("myCommitBlockTimestamp:", myCommitBlockTimestamp)
+		fmt.Println("requestBlockTimestamp:", requestBlockTimestamp)
+
 		// Commit
 		if isPreviousRoundRecovered && !item.RoundInfo.IsRecovered && myCommitBlockTimestamp.Before(requestBlockTimestamp) {
 			if !containsRound(results.CommittableRounds, item.Round) {
@@ -295,7 +298,7 @@ func GetRandomWordRequested() (*RoundResults, error) {
 		}
 
 		// re-request
-		if isPreviousRoundRecovered && commitPhaseEndTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && validCommitCount < 2 && commitCount > 0 && requestBlockTimestampEndTime.After(time.Now()) {
+		if isPreviousRoundRecovered && commitPhaseEndTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && validCommitCount < 2 && validCommitCount > 0 {
 			if !containsRound(results.ReRequestableRounds, item.Round) {
 				results.ReRequestableRounds = append(results.ReRequestableRounds, item.Round)
 			}

@@ -22,7 +22,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	ticker := time.NewTicker(60 * time.Second)
+	ticker := time.NewTicker(40 * time.Second)
 	defer ticker.Stop()
 
 	go func() {
