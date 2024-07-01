@@ -280,9 +280,6 @@ func GetRandomWordRequested() (*RoundResults, error) {
 			}
 		}
 
-		fmt.Println("myCommitBlockTimestamp:", myCommitBlockTimestamp)
-		fmt.Println("requestBlockTimestamp:", requestBlockTimestamp)
-
 		// Commit
 		if isPreviousRoundRecovered && !item.RoundInfo.IsRecovered && myCommitBlockTimestamp.Before(requestBlockTimestamp) {
 			if !containsRound(results.CommittableRounds, item.Round) {
