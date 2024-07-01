@@ -343,6 +343,7 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 				log.Printf("Error in BeforeRecoverPhase: %v", err)
 			}
 
+			omega = strings.TrimPrefix(omega, "0x")
 			omegaBigInt := new(big.Int)
 			if _, ok := omegaBigInt.SetString(omega, 16); !ok {
 				log.Printf("Failed to parse omega: %s", omega)
