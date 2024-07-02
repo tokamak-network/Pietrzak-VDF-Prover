@@ -326,7 +326,7 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 		}
 
 		// Re-request
-		if isPreviousRoundRecovered && commitPhaseEndTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && validCommitCount < 2 && validCommitCount > 0 {
+		if isPreviousRoundRecovered && commitPhaseEndTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && validCommitCount < 2 && validCommitCount > 0 && commitTimeStampStr != "0" {
 			if _, exists := roundStatus.Load(roundStr + ":ReRequested"); !exists {
 				results.ReRequestableRounds = append(results.ReRequestableRounds, roundStr)
 				roundStatus.Store(roundStr+":ReRequested", "Processed")
