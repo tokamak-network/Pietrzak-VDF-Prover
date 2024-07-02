@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	CommitDuration  = 120 // Commit duration in seconds
+	CommitDuration  = 140 // Commit duration in seconds
 	DisputeDuration = 180 // Dispute duration in seconds
 	ContextTimeout  = 600000
 )
