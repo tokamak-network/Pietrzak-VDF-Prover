@@ -325,6 +325,7 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 		}
 		commitTimeStampTime := time.Unix(commitTimeStampInt, 0)
 		commitPhaseEndTime := commitTimeStampTime.Add(time.Duration(CommitDuration) * time.Second)
+		reRequestTime := commitTimeStampTime.Add(300 * time.Second)
 
 		roundStr := item.Round
 
@@ -362,7 +363,7 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 		}
 
 		// Re-request
-		if isPreviousRoundRecovered && commitPhaseEndTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && validCommitCount < 2 && validCommitCount > 0 && commitTimeStampStr != "0" {
+		if isPreviousRoundRecovered && reRequestTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && validCommitCount < 2 && validCommitCount > 0 && commitTimeStampStr != "0" {
 			_, commitExists := roundStatus.Load(roundStr + ":Committed")
 			if _, exists := roundStatus.Load(roundStr + ":ReRequested"); !exists {
 				results.ReRequestableRounds = append(results.ReRequestableRounds, roundStr)
