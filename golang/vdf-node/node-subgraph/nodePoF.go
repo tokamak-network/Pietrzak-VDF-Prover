@@ -91,7 +91,7 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 
 	req := graphql.NewRequest(`
     query MyQuery {
-        randomWordsRequesteds(orderBy: blockTimestamp, orderDirection: desc, first: 30) {
+        randomWordsRequesteds(orderBy: blockTimestamp, orderDirection: desc, first: 50) {
             blockTimestamp
             roundInfo {
                 commitCount
@@ -364,13 +364,23 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 
 		// Re-request
 		if isPreviousRoundRecovered && reRequestTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && validCommitCount < 2 && validCommitCount > 0 && commitTimeStampStr != "0" {
-			_, commitExists := roundStatus.Load(roundStr + ":Committed")
-			if _, exists := roundStatus.Load(roundStr + ":ReRequested"); !exists {
-				results.ReRequestableRounds = append(results.ReRequestableRounds, roundStr)
-				roundStatus.Store(roundStr+":ReRequested", "Processed")
+			isRoundAlreadyCommittable := false
+			for _, committableRound := range results.CommittableRounds {
+				if committableRound == roundStr {
+					isRoundAlreadyCommittable = true
+					break
+				}
+			}
 
-				if commitExists {
-					roundStatus.Delete(roundStr + ":Committed")
+			if !isRoundAlreadyCommittable {
+				_, commitExists := roundStatus.Load(roundStr + ":Committed")
+				if _, exists := roundStatus.Load(roundStr + ":ReRequested"); !exists {
+					results.ReRequestableRounds = append(results.ReRequestableRounds, roundStr)
+					roundStatus.Store(roundStr+":ReRequested", "Processed")
+
+					if commitExists {
+						roundStatus.Delete(roundStr + ":Committed")
+					}
 				}
 			}
 		}
