@@ -325,7 +325,7 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 		}
 		commitTimeStampTime := time.Unix(commitTimeStampInt, 0)
 		commitPhaseEndTime := commitTimeStampTime.Add(time.Duration(CommitDuration) * time.Second)
-		reRequestTime := commitTimeStampTime.Add(300 * time.Second)
+		reRequestTime := commitTimeStampTime.Add(120 * time.Second)
 
 		roundStr := item.Round
 
