@@ -166,7 +166,6 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 	//}
 
 	for _, round := range rounds {
-
 		item := round.Data
 		reqOne := graphql.NewRequest(`
 		query MyQuery($round: String!, $msgSender: String!) {
@@ -328,6 +327,10 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 		commitPhaseEndTime := commitTimeStampTime.Add(time.Duration(CommitDuration) * time.Second)
 
 		roundStr := item.Round
+
+		if item.Round == "0" {
+			isPreviousRoundRecovered = true
+		}
 
 		// Recover
 		if !isRecovered && isMyAddressLeader && isCommitSender && commitPhaseEndTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && !item.RoundInfo.IsFulfillExecuted && validCommitCount > 1 {
