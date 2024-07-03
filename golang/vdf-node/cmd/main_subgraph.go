@@ -22,6 +22,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 즉시 첫 번째 작업을 실행
+	err = client.ProcessRoundResults()
+	if err != nil {
+		log.Printf("Initial processing of round results failed: %v", err)
+	}
+
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 
@@ -29,12 +35,10 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				go func() {
-					err := client.ProcessRoundResults()
-					if err != nil {
-						log.Printf("Processing round results failed: %v", err)
-					}
-				}()
+				err := client.ProcessRoundResults()
+				if err != nil {
+					log.Printf("Processing round results failed: %v", err)
+				}
 			}
 		}
 	}()
