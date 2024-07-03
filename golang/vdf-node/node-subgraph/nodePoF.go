@@ -90,18 +90,18 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 	client := graphql.NewClient(config.SubgraphURL)
 
 	req := graphql.NewRequest(`
-	query MyQuery {
-	  randomWordsRequesteds(orderBy: blockTimestamp, orderDirection: asc) {
-		blockTimestamp
-		roundInfo {
-		  commitCount
-		  validCommitCount
-		  isRecovered
-		  isFulfillExecuted
-		}
-		round
-	  }
-	}`)
+    query MyQuery {
+        randomWordsRequesteds(orderBy: blockTimestamp, orderDirection: desc, first: 30) {
+            blockTimestamp
+            roundInfo {
+                commitCount
+                validCommitCount
+                isRecovered
+                isFulfillExecuted
+            }
+            round
+        }
+    }`)
 
 	ctx := context.Background()
 
@@ -112,26 +112,44 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 		return nil, err
 	}
 
+	// Use a map to keep only the latest entry per round
+	latestRounds := make(map[string]RandomWordRequestedStruct)
+	for _, item := range respData.RandomWordsRequested {
+		if existing, ok := latestRounds[item.Round]; ok {
+			// Compare blockTimestamps and update if the current item is more recent
+			existingTimestamp, _ := strconv.Atoi(existing.BlockTimestamp)
+			currentTimestamp, _ := strconv.Atoi(item.BlockTimestamp)
+			if currentTimestamp > existingTimestamp {
+				latestRounds[item.Round] = item
+			}
+		} else {
+			latestRounds[item.Round] = item
+		}
+	}
+
+	// Convert map to a slice for sorting
 	var rounds []struct {
 		RoundInt int
 		Data     RandomWordRequestedStruct
 	}
-	for _, item := range respData.RandomWordsRequested {
-		roundInt, err := strconv.Atoi(item.Round)
+	for round, data := range latestRounds {
+		roundInt, err := strconv.Atoi(round)
 		if err != nil {
-			log.Printf("Error converting round to int: %s, %v", item.Round, err)
+			log.Printf("Error converting round to int: %s, %v", round, err)
 			continue
 		}
 		rounds = append(rounds, struct {
 			RoundInt int
 			Data     RandomWordRequestedStruct
-		}{RoundInt: roundInt, Data: item})
+		}{RoundInt: roundInt, Data: data})
 	}
 
+	// Sort rounds by RoundInt
 	sort.Slice(rounds, func(i, j int) bool {
 		return rounds[i].RoundInt < rounds[j].RoundInt
 	})
 
+	// Initialize RoundResults structure
 	results := &RoundResults{
 		RecoverableRounds:           []string{},
 		CommittableRounds:           []string{},
@@ -142,7 +160,14 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 		CompleteRounds:              []string{},
 	}
 
-	for _, item := range respData.RandomWordsRequested {
+	// Display the filtered rounds
+	//for _, round := range rounds {
+	//	fmt.Printf("Round: %d, Data: %+v\n", round.RoundInt, round.Data)
+	//}
+
+	for _, round := range rounds {
+
+		item := round.Data
 		reqOne := graphql.NewRequest(`
 		query MyQuery($round: String!, $msgSender: String!) {
 		  commitCs(where: {round: $round, msgSender: $msgSender}) {
@@ -284,6 +309,9 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 			return nil, err
 		}
 		requestBlockTimestamp := time.Unix(requestBlockTimestampInt, 0)
+		//fmt.Println("item Round: ", item.Round, " requestBlockTimestampStr: ", requestBlockTimestampStr)
+		//fmt.Println("item Round: ", item.Round, " requestBlockTimestamp: ", requestBlockTimestamp)
+		//fmt.Println("myCommitBlockTimestamp: ", myCommitBlockTimestamp)
 
 		//requestBlockTimestampEndTime := requestBlockTimestamp.Add(4 * time.Minute)
 
@@ -310,10 +338,15 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 		}
 
 		// Commit
-		if isPreviousRoundRecovered && !item.RoundInfo.IsRecovered && myCommitBlockTimestamp.Before(requestBlockTimestamp) {
+		if isPreviousRoundRecovered && !item.RoundInfo.IsRecovered && requestBlockTimestamp.After(myCommitBlockTimestamp) {
+			_, reRequestExists := roundStatus.Load(roundStr + ":ReRequested")
 			if _, exists := roundStatus.Load(roundStr + ":Committed"); !exists {
 				results.CommittableRounds = append(results.CommittableRounds, roundStr)
 				roundStatus.Store(roundStr+":Committed", "Processed")
+
+				if reRequestExists {
+					roundStatus.Delete(roundStr + ":ReRequested")
+				}
 			}
 		}
 
@@ -327,9 +360,14 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 
 		// Re-request
 		if isPreviousRoundRecovered && commitPhaseEndTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && validCommitCount < 2 && validCommitCount > 0 && commitTimeStampStr != "0" {
+			_, commitExists := roundStatus.Load(roundStr + ":Committed")
 			if _, exists := roundStatus.Load(roundStr + ":ReRequested"); !exists {
 				results.ReRequestableRounds = append(results.ReRequestableRounds, roundStr)
 				roundStatus.Store(roundStr+":ReRequested", "Processed")
+
+				if commitExists {
+					roundStatus.Delete(roundStr + ":Committed")
+				}
 			}
 		}
 
@@ -354,6 +392,11 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 					if !containsRound(results.RecoverDisputeableRounds, roundStr) {
 						results.RecoverDisputeableRounds = append(results.RecoverDisputeableRounds, roundStr)
 						roundStatus.Store(roundStr+":DisputeRecovered", "Processed")
+
+						committedKey := roundStr + ":Committed"
+						if _, exists := roundStatus.Load(committedKey); exists {
+							roundStatus.Delete(committedKey)
+						}
 					}
 				}
 			}
@@ -397,6 +440,85 @@ func containsRound(rounds []string, round string) bool {
 	}
 	return false
 }
+
+//func (l *PoFClient) FoundCommitRound() error {
+//	config := GetConfig()
+//	client := graphql.NewClient(config.SubgraphURL)
+//
+//	req := graphql.NewRequest(`
+//		query MyQuery {
+//			randomWordsRequesteds(orderBy: blockTimestamp, orderDirection: asc) {
+//				blockTimestamp
+//				roundInfo {
+//					commitCount
+//					validCommitCount
+//					isRecovered
+//					isFulfillExecuted
+//					commitCs {
+//						blockTimestamp
+//						round
+//						msgSender
+//						commitVal
+//					}
+//				}
+//				round
+//			}
+//		}`)
+//
+//	ctx := context.Background()
+//
+//	var respData struct {
+//		RandomWordsRequested []RandomWordRequestedStruct `json:"randomWordsRequesteds"`
+//	}
+//	if err := client.Run(ctx, req, &respData); err != nil {
+//		log.Fatalf("GraphQL request failed: %v", err)
+//	}
+//
+//	var rounds []struct {
+//		RoundInt int
+//		Data     RandomWordRequestedStruct
+//	}
+//
+//	now := time.Now()
+//	for _, item := range respData.RandomWordsRequested {
+//
+//		// Client-side filtering for isRecovered
+//		if item.RoundInfo.IsRecovered {
+//			continue
+//		}
+//
+//		roundInt, err := strconv.Atoi(item.Round)
+//		if err != nil {
+//			log.Printf("Error converting round to int: %s, %v", item.Round, err)
+//			continue
+//		}
+//
+//		// Check the condition: CommitCs Blocktimestamp + commitduration(120s) > time.now()
+//		for _, commit := range item.RoundInfo.CommitCs {
+//			commitTimestamp, err := strconv.ParseInt(commit.BlockTimestamp, 10, 64)
+//			if err != nil {
+//				log.Printf("Error converting commit block timestamp: %s, %v", commit.BlockTimestamp, err)
+//				continue
+//			}
+//
+//			commitTime := time.Unix(commitTimestamp, 0)
+//			if commitTime.Add(120 * time.Second).After(now) {
+//				rounds = append(rounds, struct {
+//					RoundInt int
+//					Data     RandomWordRequestedStruct
+//				}{RoundInt: roundInt, Data: item})
+//				break
+//			}
+//		}
+//	}
+//
+//	// Display the filtered rounds
+//	for _, round := range rounds {
+//		fmt.Printf("Round: %d, Data: %+v\n", round.RoundInt, round.Data)
+//	}
+//
+//	return nil
+//}
 
 func (l *PoFClient) ProcessRoundResults() error {
 	config := GetConfig()
