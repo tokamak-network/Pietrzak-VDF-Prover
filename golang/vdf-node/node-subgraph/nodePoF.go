@@ -535,17 +535,17 @@ func containsRound(rounds []string, round string) bool {
 //}
 
 func (l *PoFClient) ProcessRoundResults() error {
-	config := GetConfig()
-	isOperator, err := IsOperator(config.WalletAddress)
-	if err != nil {
-		log.Printf("Error fetching isOperator results: %v", err)
-		return err
-	}
-
-	if !isOperator {
-		ctx := context.Background()
-		l.OperatorDeposit(ctx)
-	}
+	//config := GetConfig()
+	//isOperator, err := IsOperator(config.WalletAddress)
+	//if err != nil {
+	//	log.Printf("Error fetching isOperator results: %v", err)
+	//	return err
+	//}
+	//
+	//if !isOperator {
+	//	ctx := context.Background()
+	//	l.OperatorDeposit(ctx)
+	//}
 
 	results, err := l.GetRandomWordRequested()
 	if err != nil {
