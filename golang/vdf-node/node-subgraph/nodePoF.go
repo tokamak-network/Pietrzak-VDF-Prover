@@ -277,7 +277,9 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 			}
 		}
 
-		isMyAddressLeader, leaderAddress, _ := FindOffChainLeaderAtRound(item.Round)
+		recoverData, _ := l.BeforeRecoverPhase(item.Round)
+		OmegaRecov := recoverData.OmegaRecov
+		isMyAddressLeader, leaderAddress, _ := FindOffChainLeaderAtRound(item.Round, OmegaRecov)
 
 		var isPreviousRoundRecovered bool
 		previousRoundInt, err := strconv.Atoi(item.Round)
@@ -556,7 +558,7 @@ func (l *PoFClient) ProcessRoundResults() error {
 	if len(results.RecoverableRounds) > 0 {
 		fmt.Println("Processing Recoverable Rounds...")
 		for _, roundStr := range results.RecoverableRounds {
-			isMyAddressLeader, _, _ := FindOffChainLeaderAtRound(roundStr)
+			isMyAddressLeader, _, _ := FindOffChainLeaderAtRound(roundStr, big.NewInt(0))
 			if isMyAddressLeader {
 				round := new(big.Int)
 				round, ok := round.SetString(roundStr, 10)
@@ -604,7 +606,7 @@ func (l *PoFClient) ProcessRoundResults() error {
 				continue
 			}
 
-			isMyAddressLeader, _, _ := FindOffChainLeaderAtRound(roundStr)
+			isMyAddressLeader, _, _ := FindOffChainLeaderAtRound(roundStr, big.NewInt(0))
 			if isMyAddressLeader {
 				ctx := context.Background()
 				l.FulfillRandomness(ctx, round)
@@ -699,7 +701,7 @@ func (l *PoFClient) ProcessRoundResults() error {
 				fmt.Printf("Recovered Data - MsgSender: %s", msgSender.Hex())
 			}
 
-			isMyAddressLeader, leaderAddress, _ := FindOffChainLeaderAtRound(roundStr)
+			isMyAddressLeader, leaderAddress, _ := FindOffChainLeaderAtRound(roundStr, big.NewInt(0))
 
 			if msgSender != leaderAddress {
 				ctx := context.Background()
@@ -716,7 +718,7 @@ func (l *PoFClient) ProcessRoundResults() error {
 	return nil
 }
 
-func FindOffChainLeaderAtRound(round string) (bool, common.Address, error) {
+func FindOffChainLeaderAtRound(round string, OmegaRecov *big.Int) (bool, common.Address, error) {
 	config := GetConfig()
 	mySender := common.HexToAddress(config.WalletAddress)
 	commitDataList, err := GetCommitData(round)
@@ -733,7 +735,8 @@ func FindOffChainLeaderAtRound(round string) (bool, common.Address, error) {
 
 	for _, commit := range commitDataList {
 		commitAddress := common.HexToAddress(commit.MsgSender)
-		dataToHash := append([]byte(commit.BlockTimestamp), commitAddress.Bytes()...)
+		//dataToHash := append([]byte(commit.BlockTimestamp), commitAddress.Bytes()...)
+		dataToHash := append(commitAddress.Bytes(), OmegaRecov.Bytes()...)
 		currentHash := crypto.Keccak256Hash(dataToHash)
 		currentHashInt := new(big.Int).SetBytes(currentHash.Bytes())
 
