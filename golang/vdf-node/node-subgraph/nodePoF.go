@@ -592,7 +592,7 @@ func (l *PoFClient) ProcessRoundResults() error {
 
 	if len(results.FulfillableRounds) > 0 {
 		fmt.Println("Processing Fulfillable Rounds...")
-		for i, roundStr := range results.FulfillableRounds {
+		for _, roundStr := range results.FulfillableRounds {
 			round := new(big.Int)
 			round, ok := round.SetString(roundStr, 10)
 			if !ok {
@@ -601,17 +601,17 @@ func (l *PoFClient) ProcessRoundResults() error {
 			}
 
 			// Check if the index is within bounds
-			if i < len(results.RecoveryData) {
-				isMyAddressLeader, _, _ := FindOffChainLeaderAtRound(roundStr, results.RecoveryData[i].OmegaRecov)
-				if isMyAddressLeader {
-					ctx := context.Background()
-					l.FulfillRandomness(ctx, round)
-				} else {
-					fmt.Printf("Not fulfillable round: %s\n", round)
-				}
-			} else {
-				log.Printf("No recovery data available for round: %s", roundStr)
-			}
+			//if i < len(results.RecoveryData) {
+			//isMyAddressLeader, _, _ := FindOffChainLeaderAtRound(roundStr, results.RecoveryData[i].OmegaRecov)
+			//if isMyAddressLeader {
+			ctx := context.Background()
+			l.FulfillRandomness(ctx, round)
+			//} else {
+			//	fmt.Printf("Not fulfillable round: %s\n", round)
+			//}
+			//} else {
+			//	log.Printf("No recovery data available for round: %s", roundStr)
+			//}
 		}
 	}
 
