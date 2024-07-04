@@ -918,12 +918,12 @@ func IsOperator(operator string) (bool, error) {
 	client := graphql.NewClient(config.SubgraphURL)
 
 	req := graphql.NewRequest(`
-        query MyQuery($operator: String!) {
-            operatorNumberChangeds(where: {operator: $operator}) {
-                isOperator
-            }
-        }
-    `)
+		query MyQuery($operator: String!) {
+			operatorNumberChangeds(where: {operator: $operator}) {
+				isOperator
+			}
+		}
+	`)
 
 	req.Var("operator", operator)
 
@@ -934,17 +934,8 @@ func IsOperator(operator string) (bool, error) {
 	ctx := context.Background()
 	if err := client.Run(ctx, req, &respData); err != nil {
 		log.Printf("Failed to execute query: %v", err)
-
-		// HTML 응답인지 확인하기 위해 err 내용을 출력
-		if strings.Contains(err.Error(), "<") {
-			fmt.Println("Received HTML response, likely an error page")
-		}
-
 		return false, err
 	}
-
-	// 응답 데이터 출력
-	log.Printf("Response data: %+v", respData)
 
 	for _, record := range respData.OperatorNumberChangeds {
 		return record.IsOperator, nil
