@@ -231,6 +231,7 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 		var recoverPhaseEndTime time.Time
 		var isRecovered bool
 		var omega string
+		var msgSender string
 
 		if err != nil {
 			log.Printf("Error retrieving recovered data for round %s: %v", item.Round, err)
@@ -245,6 +246,7 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 
 			isRecovered = data.IsRecovered
 			omega = data.Omega
+			msgSender = data.MsgSender
 			blockTime := time.Unix(blockTimestamp, 0)
 			recoverPhaseEndTime = blockTime.Add(DisputeDuration * time.Second)
 		}
@@ -318,7 +320,7 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 
 		recoverDataMap := make(map[string]RecoveryResult)
 
-		if validCommitCount >= 2 {
+		if validCommitCount >= 2 && !isRecovered {
 			recoverData, err = l.BeforeRecoverPhase(item.Round)
 			if err != nil {
 				log.Printf("Error processing BeforeRecoverPhase for round %s: %v", item.Round, err)
@@ -333,6 +335,14 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 			recoverDataMap[item.Round] = recoverData
 			isMyAddressLeader, leaderAddress, _ = FindOffChainLeaderAtRound(item.Round, recoverData.OmegaRecov)
 			results.RecoveryData = append(results.RecoveryData, recoverData)
+		} else if validCommitCount >= 2 && isRecovered {
+			if config.WalletAddress == msgSender {
+				isMyAddressLeader = true
+				leaderAddress = common.HexToAddress(msgSender)
+			} else {
+				isMyAddressLeader = false
+				leaderAddress = common.HexToAddress(msgSender)
+			}
 		}
 
 		var isPreviousRoundRecovered bool
