@@ -20,6 +20,7 @@ import (
 	"io/ioutil"
 	"log"
 	"math/big"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -29,7 +30,6 @@ import (
 )
 
 var roundStatus sync.Map
-var processedRounds = make(map[string]RecoveryResult)
 
 func loadContractABI(filename string) (abi.ABI, error) {
 	fileContent, err := ioutil.ReadFile(filename)
@@ -175,20 +175,12 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 	}
 
 	// Display the filtered rounds
-	//for _, round := range rounds {
-	//	fmt.Printf("Round: %d, Data: %+v\n", round.RoundInt, round.Data)
-	//}
+	for _, round := range filteredRounds {
+		fmt.Printf("Round: %d, Data: %+v\n", round.RoundInt, round.Data)
+	}
 
 	for _, round := range filteredRounds {
 		item := round.Data
-
-		var recoverData RecoveryResult
-		var found bool
-		if recoverData, found = processedRounds[item.Round]; !found {
-			recoverData, _ = l.BeforeRecoverPhase(item.Round)
-			processedRounds[item.Round] = recoverData
-		}
-
 		reqOne := graphql.NewRequest(`
 		query MyQuery($round: String!, $msgSender: String!) {
 		  commitCs(where: {round: $round, msgSender: $msgSender}) {
@@ -301,7 +293,26 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 
 		var isMyAddressLeader bool
 		var leaderAddress common.Address
-		isMyAddressLeader, leaderAddress, _ = FindOffChainLeaderAtRound(item.Round, recoverData.OmegaRecov)
+		var recoverData RecoveryResult
+		if validCommitCount >= 2 {
+			recoverData, loaded, err := loadRecoveryDataFromFile(item.Round)
+			if err != nil || !loaded {
+				recoverData, err = l.BeforeRecoverPhase(item.Round)
+				if err != nil {
+					log.Printf("Error processing BeforeRecoverPhase for round %s: %v", item.Round, err)
+					continue
+				}
+
+				err = saveRecoveryDataToFile(recoverData, item.Round)
+				if err != nil {
+					log.Printf("Failed to save recovery data to file for round %s: %v", item.Round, err)
+					continue
+				}
+			}
+
+			results.RecoveryData = append(results.RecoveryData, recoverData)
+			isMyAddressLeader, leaderAddress, _ = FindOffChainLeaderAtRound(item.Round, recoverData.OmegaRecov)
+		}
 
 		var isPreviousRoundRecovered bool
 		previousRoundInt, err := strconv.Atoi(item.Round)
@@ -478,85 +489,6 @@ func containsRound(rounds []string, round string) bool {
 	}
 	return false
 }
-
-//func (l *PoFClient) FoundCommitRound() error {
-//	config := GetConfig()
-//	client := graphql.NewClient(config.SubgraphURL)
-//
-//	req := graphql.NewRequest(`
-//		query MyQuery {
-//			randomWordsRequesteds(orderBy: blockTimestamp, orderDirection: asc) {
-//				blockTimestamp
-//				roundInfo {
-//					commitCount
-//					validCommitCount
-//					isRecovered
-//					isFulfillExecuted
-//					commitCs {
-//						blockTimestamp
-//						round
-//						msgSender
-//						commitVal
-//					}
-//				}
-//				round
-//			}
-//		}`)
-//
-//	ctx := context.Background()
-//
-//	var respData struct {
-//		RandomWordsRequested []RandomWordRequestedStruct `json:"randomWordsRequesteds"`
-//	}
-//	if err := client.Run(ctx, req, &respData); err != nil {
-//		log.Fatalf("GraphQL request failed: %v", err)
-//	}
-//
-//	var rounds []struct {
-//		RoundInt int
-//		Data     RandomWordRequestedStruct
-//	}
-//
-//	now := time.Now()
-//	for _, item := range respData.RandomWordsRequested {
-//
-//		// Client-side filtering for isRecovered
-//		if item.RoundInfo.IsRecovered {
-//			continue
-//		}
-//
-//		roundInt, err := strconv.Atoi(item.Round)
-//		if err != nil {
-//			log.Printf("Error converting round to int: %s, %v", item.Round, err)
-//			continue
-//		}
-//
-//		// Check the condition: CommitCs Blocktimestamp + commitduration(120s) > time.now()
-//		for _, commit := range item.RoundInfo.CommitCs {
-//			commitTimestamp, err := strconv.ParseInt(commit.BlockTimestamp, 10, 64)
-//			if err != nil {
-//				log.Printf("Error converting commit block timestamp: %s, %v", commit.BlockTimestamp, err)
-//				continue
-//			}
-//
-//			commitTime := time.Unix(commitTimestamp, 0)
-//			if commitTime.Add(120 * time.Second).After(now) {
-//				rounds = append(rounds, struct {
-//					RoundInt int
-//					Data     RandomWordRequestedStruct
-//				}{RoundInt: roundInt, Data: item})
-//				break
-//			}
-//		}
-//	}
-//
-//	// Display the filtered rounds
-//	for _, round := range rounds {
-//		fmt.Printf("Round: %d, Data: %+v\n", round.RoundInt, round.Data)
-//	}
-//
-//	return nil
-//}
 
 func (l *PoFClient) ProcessRoundResults() error {
 	config := GetConfig()
@@ -1489,4 +1421,32 @@ func (l *PoFClient) OperatorDeposit(ctx context.Context) (common.Address, *types
 	fmt.Println("---------------------------------------------------------------------------")
 
 	return auth.From, signedTx, nil // Return the sender address and the transaction
+}
+
+func saveRecoveryDataToFile(data RecoveryResult, round string) error {
+	// Include the relative path to the data directory
+	filename := fmt.Sprintf("../data/recoveryData_%s.json", round)
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	// Ensure the directory exists before writing
+	if err := os.MkdirAll("../data", 0755); err != nil {
+		return err
+	}
+	return ioutil.WriteFile(filename, jsonData, 0644)
+}
+
+func loadRecoveryDataFromFile(round string) (RecoveryResult, bool, error) {
+	filename := fmt.Sprintf("../data/recoveryData_%s.json", round)
+	fileData, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return RecoveryResult{}, false, err
+	}
+	var data RecoveryResult
+	err = json.Unmarshal(fileData, &data)
+	if err != nil {
+		return RecoveryResult{}, false, err
+	}
+	return data, true, nil
 }
