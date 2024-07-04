@@ -314,7 +314,7 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 			isMyAddressLeader, leaderAddress, _ = FindOffChainLeaderAtRound(item.Round, recoverData.OmegaRecov)
 		}
 
-		var isPreviousRoundRecovered bool
+		var isPreviousRoundRecovered bool = true
 		previousRoundInt, err := strconv.Atoi(item.Round)
 		if err != nil {
 			log.Printf("Error converting round to int: %v", err)
@@ -322,15 +322,13 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 		}
 
 		previousRound := strconv.Itoa(previousRoundInt - 1)
-
 		previousRoundData, err := GetRecoveredData(previousRound)
 		if err != nil {
 			log.Printf("Error retrieving recovered data for previous round %s: %v", previousRound, err)
 		} else {
-			isPreviousRoundRecovered = false
 			for _, data := range previousRoundData {
-				if data.IsRecovered {
-					isPreviousRoundRecovered = true
+				if !data.IsRecovered {
+					isPreviousRoundRecovered = false
 					break
 				}
 			}
