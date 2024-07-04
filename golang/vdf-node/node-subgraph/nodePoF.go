@@ -127,11 +127,11 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 		}
 	}
 
-	// Convert map to a slice for sorting
 	var rounds []struct {
 		RoundInt int
 		Data     RandomWordRequestedStruct
 	}
+
 	for round, data := range latestRounds {
 		roundInt, err := strconv.Atoi(round)
 		if err != nil {
@@ -144,16 +144,21 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 		}{RoundInt: roundInt, Data: data})
 	}
 
-	filteredRounds := rounds[:0]
+	// Filter out items where isFulfillExecuted is true
+	var filteredRounds []struct {
+		RoundInt int
+		Data     RandomWordRequestedStruct
+	}
+
 	for _, round := range rounds {
 		if !round.Data.RoundInfo.IsFulfillExecuted {
 			filteredRounds = append(filteredRounds, round)
 		}
 	}
 
-	// Sort rounds by RoundInt
-	sort.Slice(rounds, func(i, j int) bool {
-		return rounds[i].RoundInt < rounds[j].RoundInt
+	// Sort the filtered rounds by RoundInt
+	sort.Slice(filteredRounds, func(i, j int) bool {
+		return filteredRounds[i].RoundInt < filteredRounds[j].RoundInt
 	})
 
 	// Initialize RoundResults structure
@@ -173,7 +178,7 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 	//	fmt.Printf("Round: %d, Data: %+v\n", round.RoundInt, round.Data)
 	//}
 
-	for _, round := range rounds {
+	for _, round := range filteredRounds {
 		item := round.Data
 		reqOne := graphql.NewRequest(`
 		query MyQuery($round: String!, $msgSender: String!) {
