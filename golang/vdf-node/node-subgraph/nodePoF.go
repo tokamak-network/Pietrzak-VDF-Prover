@@ -400,19 +400,17 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 		}
 
 		// Commit
-		go func() {
-			if isPreviousRoundRecovered && !item.RoundInfo.IsRecovered && requestBlockTimestamp.After(myCommitBlockTimestamp) {
-				_, reRequestExists := roundStatus.Load(roundStr + ":ReRequested")
-				if _, exists := roundStatus.Load(roundStr + ":Committed"); !exists {
-					results.CommittableRounds = append(results.CommittableRounds, roundStr)
-					roundStatus.Store(roundStr+":Committed", "Processed")
+		if isPreviousRoundRecovered && !item.RoundInfo.IsRecovered && requestBlockTimestamp.After(myCommitBlockTimestamp) {
+			_, reRequestExists := roundStatus.Load(roundStr + ":ReRequested")
+			if _, exists := roundStatus.Load(roundStr + ":Committed"); !exists {
+				results.CommittableRounds = append(results.CommittableRounds, roundStr)
+				roundStatus.Store(roundStr+":Committed", "Processed")
 
-					if reRequestExists {
-						roundStatus.Delete(roundStr + ":ReRequested")
-					}
+				if reRequestExists {
+					roundStatus.Delete(roundStr + ":ReRequested")
 				}
 			}
-		}()
+		}
 
 		// Recover
 		if !isRecovered && isMyAddressLeader && isCommitSender && commitPhaseEndTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && !item.RoundInfo.IsFulfillExecuted && validCommitCount > 1 {
