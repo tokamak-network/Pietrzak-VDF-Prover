@@ -316,11 +316,24 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 		//	isMyAddressLeader, leaderAddress, _ = FindOffChainLeaderAtRound(item.Round, recoverData.OmegaRecov)
 		//}
 
-		if validCommitCount >= 2 && isRecovered == false {
+		recoverDataMap := make(map[string]RecoveryResult)
+
+		if validCommitCount >= 2 && !isRecovered {
 			recoverData, err = l.BeforeRecoverPhase(item.Round)
+			if err != nil {
+				log.Printf("Error processing BeforeRecoverPhase for round %s: %v", item.Round, err)
+				continue
+			}
+
+			if recoverData.OmegaRecov == nil {
+				log.Printf("OmegaRecov is nil for round %s", item.Round)
+				continue
+			}
+
+			recoverDataMap[item.Round] = recoverData
+			isMyAddressLeader, leaderAddress, _ = FindOffChainLeaderAtRound(item.Round, recoverData.OmegaRecov)
 			results.RecoveryData = append(results.RecoveryData, recoverData)
 		}
-		isMyAddressLeader, leaderAddress, _ = FindOffChainLeaderAtRound(item.Round, recoverData.OmegaRecov)
 
 		var isPreviousRoundRecovered bool
 		previousRoundInt, err := strconv.Atoi(item.Round)
@@ -433,29 +446,28 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 			roundBigInt := new(big.Int)
 			roundBigInt.SetString(item.Round, 10)
 
-			//recoveryResult, err := l.BeforeRecoverPhase(roundStr)
-			if err != nil {
-				log.Printf("Error in BeforeRecoverPhase: %v", err)
-			}
+			if data, exists := recoverDataMap[item.Round]; exists {
+				omega = strings.TrimPrefix(omega, "0x")
+				omegaBigInt := new(big.Int)
+				if _, ok := omegaBigInt.SetString(omega, 16); !ok {
+					log.Printf("Failed to parse omega: %s", omega)
+				}
 
-			omega = strings.TrimPrefix(omega, "0x")
-			omegaBigInt := new(big.Int)
-			if _, ok := omegaBigInt.SetString(omega, 16); !ok {
-				log.Printf("Failed to parse omega: %s", omega)
-			}
+				if omegaBigInt.Cmp(data.OmegaRecov) != 0 {
+					if _, exists := roundStatus.Load(item.Round + ":DisputeRecovered"); !exists {
+						if !containsRound(results.RecoverDisputeableRounds, item.Round) {
+							results.RecoverDisputeableRounds = append(results.RecoverDisputeableRounds, item.Round)
+							roundStatus.Store(item.Round+":DisputeRecovered", "Processed")
 
-			if omegaBigInt.Cmp(recoverData.OmegaRecov) != 0 {
-				if _, exists := roundStatus.Load(roundStr + ":DisputeRecovered"); !exists {
-					if !containsRound(results.RecoverDisputeableRounds, roundStr) {
-						results.RecoverDisputeableRounds = append(results.RecoverDisputeableRounds, roundStr)
-						roundStatus.Store(roundStr+":DisputeRecovered", "Processed")
-
-						committedKey := roundStr + ":Committed"
-						if _, exists := roundStatus.Load(committedKey); exists {
-							roundStatus.Delete(committedKey)
+							committedKey := item.Round + ":Committed"
+							if _, exists := roundStatus.Load(committedKey); exists {
+								roundStatus.Delete(committedKey)
+							}
 						}
 					}
 				}
+			} else {
+				log.Printf("No recovery data found for round %s", item.Round)
 			}
 		}
 
