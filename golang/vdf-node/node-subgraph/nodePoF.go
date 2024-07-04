@@ -366,14 +366,6 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 			isPreviousRoundRecovered = true
 		}
 
-		// Recover
-		if !isRecovered && isMyAddressLeader && isCommitSender && commitPhaseEndTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && !item.RoundInfo.IsFulfillExecuted && validCommitCount > 1 {
-			if _, exists := roundStatus.Load(roundStr + ":Recovered"); !exists {
-				results.RecoverableRounds = append(results.RecoverableRounds, roundStr)
-				roundStatus.Store(roundStr+":Recovered", "Processed")
-			}
-		}
-
 		// Commit
 		if isPreviousRoundRecovered && !item.RoundInfo.IsRecovered && requestBlockTimestamp.After(myCommitBlockTimestamp) {
 			_, reRequestExists := roundStatus.Load(roundStr + ":ReRequested")
@@ -387,78 +379,88 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 			}
 		}
 
-		// Fulfill
-		if isMyAddressLeader && isCommitSender && recoverPhaseEndTime.Before(time.Now()) && item.RoundInfo.IsRecovered && !item.RoundInfo.IsFulfillExecuted && validCommitCount > 1 {
-			if _, exists := roundStatus.Load(roundStr + ":Fulfilled"); !exists {
-				results.FulfillableRounds = append(results.FulfillableRounds, roundStr)
-				roundStatus.Store(roundStr+":Fulfilled", "Processed")
-			}
-		}
-
-		// Re-request
-		if isPreviousRoundRecovered && reRequestTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && validCommitCount < 2 && validCommitCount > 0 && commitTimeStampStr != "0" {
-			isRoundAlreadyCommittable := false
-			for _, committableRound := range results.CommittableRounds {
-				if committableRound == roundStr {
-					isRoundAlreadyCommittable = true
-					break
+		if loaded {
+			// Recover
+			if !isRecovered && isMyAddressLeader && isCommitSender && commitPhaseEndTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && !item.RoundInfo.IsFulfillExecuted && validCommitCount > 1 {
+				if _, exists := roundStatus.Load(roundStr + ":Recovered"); !exists {
+					results.RecoverableRounds = append(results.RecoverableRounds, roundStr)
+					roundStatus.Store(roundStr+":Recovered", "Processed")
 				}
 			}
 
-			if !isRoundAlreadyCommittable {
-				_, commitExists := roundStatus.Load(roundStr + ":Committed")
-				if _, exists := roundStatus.Load(roundStr + ":ReRequested"); !exists {
-					results.ReRequestableRounds = append(results.ReRequestableRounds, roundStr)
-					roundStatus.Store(roundStr+":ReRequested", "Processed")
+			// Fulfill
+			if isMyAddressLeader && isCommitSender && recoverPhaseEndTime.Before(time.Now()) && item.RoundInfo.IsRecovered && !item.RoundInfo.IsFulfillExecuted && validCommitCount > 1 {
+				if _, exists := roundStatus.Load(roundStr + ":Fulfilled"); !exists {
+					results.FulfillableRounds = append(results.FulfillableRounds, roundStr)
+					roundStatus.Store(roundStr+":Fulfilled", "Processed")
+				}
+			}
 
-					if commitExists {
-						roundStatus.Delete(roundStr + ":Committed")
+			// Re-request
+			if isPreviousRoundRecovered && reRequestTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && validCommitCount < 2 && validCommitCount > 0 && commitTimeStampStr != "0" {
+				isRoundAlreadyCommittable := false
+				for _, committableRound := range results.CommittableRounds {
+					if committableRound == roundStr {
+						isRoundAlreadyCommittable = true
+						break
 					}
 				}
-			}
-		}
 
-		// Dispute Recover
-		if !isMyAddressLeader && isCommitSender && time.Now().Before(recoverPhaseEndTime) && item.RoundInfo.IsRecovered && !item.RoundInfo.IsFulfillExecuted {
-			roundBigInt := new(big.Int)
-			roundBigInt.SetString(item.Round, 10)
+				if !isRoundAlreadyCommittable {
+					_, commitExists := roundStatus.Load(roundStr + ":Committed")
+					if _, exists := roundStatus.Load(roundStr + ":ReRequested"); !exists {
+						results.ReRequestableRounds = append(results.ReRequestableRounds, roundStr)
+						roundStatus.Store(roundStr+":ReRequested", "Processed")
 
-			//recoveryResult, err := l.BeforeRecoverPhase(roundStr)
-			if err != nil {
-				log.Printf("Error in BeforeRecoverPhase: %v", err)
-			}
-
-			omega = strings.TrimPrefix(omega, "0x")
-			omegaBigInt := new(big.Int)
-			if _, ok := omegaBigInt.SetString(omega, 16); !ok {
-				log.Printf("Failed to parse omega: %s", omega)
-			}
-
-			fmt.Println("recoverData.OmegaRecov: ", recoverData.OmegaRecov)
-			if recoverData.OmegaRecov != nil && omegaBigInt.Cmp(recoverData.OmegaRecov) != 0 {
-				if _, exists := roundStatus.Load(roundStr + ":DisputeRecovered"); !exists {
-					if !containsRound(results.RecoverDisputeableRounds, roundStr) {
-						results.RecoverDisputeableRounds = append(results.RecoverDisputeableRounds, roundStr)
-						roundStatus.Store(roundStr+":DisputeRecovered", "Processed")
-
-						committedKey := roundStr + ":Committed"
-						if _, exists := roundStatus.Load(committedKey); exists {
-							roundStatus.Delete(committedKey)
+						if commitExists {
+							roundStatus.Delete(roundStr + ":Committed")
 						}
 					}
 				}
 			}
-		}
 
-		// Dispute Leadership
-		if !isMyAddressLeader && isCommitSender && time.Now().Before(recoverPhaseEndTime) && item.RoundInfo.IsRecovered && item.RoundInfo.IsFulfillExecuted {
-			fulfillSenderAddress := common.HexToAddress(fulfillSender)
+			// Dispute Recover
+			if !isMyAddressLeader && isCommitSender && time.Now().Before(recoverPhaseEndTime) && item.RoundInfo.IsRecovered && !item.RoundInfo.IsFulfillExecuted {
+				roundBigInt := new(big.Int)
+				roundBigInt.SetString(item.Round, 10)
 
-			if fulfillSenderAddress != leaderAddress {
-				if _, exists := roundStatus.Load(roundStr + ":DisputeLeadershiped"); !exists {
-					if !containsRound(results.LeadershipDisputeableRounds, roundStr) {
-						results.LeadershipDisputeableRounds = append(results.LeadershipDisputeableRounds, roundStr)
-						roundStatus.Store(roundStr+":DisputeLeadershiped", "Processed")
+				//recoveryResult, err := l.BeforeRecoverPhase(roundStr)
+				if err != nil {
+					log.Printf("Error in BeforeRecoverPhase: %v", err)
+				}
+
+				omega = strings.TrimPrefix(omega, "0x")
+				omegaBigInt := new(big.Int)
+				if _, ok := omegaBigInt.SetString(omega, 16); !ok {
+					log.Printf("Failed to parse omega: %s", omega)
+				}
+
+				fmt.Println("recoverData.OmegaRecov: ", recoverData.OmegaRecov)
+				if recoverData.OmegaRecov != nil && omegaBigInt.Cmp(recoverData.OmegaRecov) != 0 {
+					if _, exists := roundStatus.Load(roundStr + ":DisputeRecovered"); !exists {
+						if !containsRound(results.RecoverDisputeableRounds, roundStr) {
+							results.RecoverDisputeableRounds = append(results.RecoverDisputeableRounds, roundStr)
+							roundStatus.Store(roundStr+":DisputeRecovered", "Processed")
+
+							committedKey := roundStr + ":Committed"
+							if _, exists := roundStatus.Load(committedKey); exists {
+								roundStatus.Delete(committedKey)
+							}
+						}
+					}
+				}
+			}
+
+			// Dispute Leadership
+			if !isMyAddressLeader && isCommitSender && time.Now().Before(recoverPhaseEndTime) && item.RoundInfo.IsRecovered && item.RoundInfo.IsFulfillExecuted {
+				fulfillSenderAddress := common.HexToAddress(fulfillSender)
+
+				if fulfillSenderAddress != leaderAddress {
+					if _, exists := roundStatus.Load(roundStr + ":DisputeLeadershiped"); !exists {
+						if !containsRound(results.LeadershipDisputeableRounds, roundStr) {
+							results.LeadershipDisputeableRounds = append(results.LeadershipDisputeableRounds, roundStr)
+							roundStatus.Store(roundStr+":DisputeLeadershiped", "Processed")
+						}
 					}
 				}
 			}
