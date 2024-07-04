@@ -316,7 +316,7 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 		//	isMyAddressLeader, leaderAddress, _ = FindOffChainLeaderAtRound(item.Round, recoverData.OmegaRecov)
 		//}
 
-		if validCommitCount >= 2 {
+		if validCommitCount >= 2 && isRecovered == false {
 			recoverData, err = l.BeforeRecoverPhase(item.Round)
 			results.RecoveryData = append(results.RecoveryData, recoverData)
 		}
