@@ -436,7 +436,8 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 				log.Printf("Failed to parse omega: %s", omega)
 			}
 
-			if omegaBigInt.Cmp(recoverData.OmegaRecov) != 0 {
+			fmt.Println("recoverData.OmegaRecov: ", recoverData.OmegaRecov)
+			if recoverData.OmegaRecov != nil && omegaBigInt.Cmp(recoverData.OmegaRecov) != 0 {
 				if _, exists := roundStatus.Load(roundStr + ":DisputeRecovered"); !exists {
 					if !containsRound(results.RecoverDisputeableRounds, roundStr) {
 						results.RecoverDisputeableRounds = append(results.RecoverDisputeableRounds, roundStr)
