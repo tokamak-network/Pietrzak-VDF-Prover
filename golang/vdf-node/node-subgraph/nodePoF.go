@@ -294,37 +294,33 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 		var isMyAddressLeader bool
 		var leaderAddress common.Address
 		var recoverData RecoveryResult
-		var loaded bool
+		//var loaded bool
 
-		if validCommitCount > 1 {
-			recoverData, loaded, err = loadRecoveryDataFromFile(item.Round)
-			if !loaded {
-				recoverData, err = l.BeforeRecoverPhase(item.Round)
-				if err != nil {
-					log.Printf("Error processing BeforeRecoverPhase for round %s: %v", item.Round, err)
-					continue
-				}
-
-				err = saveRecoveryDataToFile(recoverData, item.Round)
-				if err != nil {
-					log.Printf("Failed to save recovery data to file for round %s: %v", item.Round, err)
-					continue
-				}
-			}
-
-			results.RecoveryData = append(results.RecoveryData, recoverData)
-			isMyAddressLeader, leaderAddress, _ = FindOffChainLeaderAtRound(item.Round, recoverData.OmegaRecov)
-		}
-
-		//var isMyAddressLeader bool
-		//var leaderAddress common.Address
-		//var recoverData RecoveryResult
+		//if validCommitCount > 1 {
+		//	recoverData, loaded, err = loadRecoveryDataFromFile(item.Round)
+		//	if !loaded {
+		//		recoverData, err = l.BeforeRecoverPhase(item.Round)
+		//		if err != nil {
+		//			log.Printf("Error processing BeforeRecoverPhase for round %s: %v", item.Round, err)
+		//			continue
+		//		}
 		//
-		//if validCommitCount >= 2 {
-		//	recoverData, err = l.BeforeRecoverPhase(item.Round)
+		//		err = saveRecoveryDataToFile(recoverData, item.Round)
+		//		if err != nil {
+		//			log.Printf("Failed to save recovery data to file for round %s: %v", item.Round, err)
+		//			continue
+		//		}
+		//	}
+		//
 		//	results.RecoveryData = append(results.RecoveryData, recoverData)
+		//	isMyAddressLeader, leaderAddress, _ = FindOffChainLeaderAtRound(item.Round, recoverData.OmegaRecov)
 		//}
-		//isMyAddressLeader, leaderAddress, _ = FindOffChainLeaderAtRound(item.Round, recoverData.OmegaRecov)
+
+		if validCommitCount >= 2 {
+			recoverData, err = l.BeforeRecoverPhase(item.Round)
+			results.RecoveryData = append(results.RecoveryData, recoverData)
+		}
+		isMyAddressLeader, leaderAddress, _ = FindOffChainLeaderAtRound(item.Round, recoverData.OmegaRecov)
 
 		var isPreviousRoundRecovered bool
 		previousRoundInt, err := strconv.Atoi(item.Round)
@@ -448,7 +444,7 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 				log.Printf("Failed to parse omega: %s", omega)
 			}
 
-			if omegaBigInt.Cmp(omegaBigInt) != 0 {
+			if omegaBigInt.Cmp(recoverData.OmegaRecov) != 0 {
 				if _, exists := roundStatus.Load(roundStr + ":DisputeRecovered"); !exists {
 					if !containsRound(results.RecoverDisputeableRounds, roundStr) {
 						results.RecoverDisputeableRounds = append(results.RecoverDisputeableRounds, roundStr)
