@@ -624,12 +624,11 @@ func (l *PoFClient) ProcessRoundResults() error {
 				continue
 			}
 
-			var msgSender common.Address
-			var omega *big.Int
+			disputeInitiated := false
 
 			for _, data := range recoveredData {
-				msgSender = common.HexToAddress(data.MsgSender)
-				omega = new(big.Int)
+				msgSender := common.HexToAddress(data.MsgSender)
+				omega := new(big.Int)
 				omega, ok := omega.SetString(data.Omega[2:], 16)
 				if !ok {
 					log.Printf("Failed to parse omega for round %s: %s", roundStr, data.Omega)
@@ -637,17 +636,23 @@ func (l *PoFClient) ProcessRoundResults() error {
 				}
 
 				fmt.Printf("Recovered Data - MsgSender: %s, Omega: %s\n", msgSender.Hex(), omega.String())
-			}
 
-			for _, recoveryData := range results.RecoveryData {
-				if recoveryData.OmegaRecov.Cmp(omega) != 0 {
-					ctx := context.Background()
-
-					// round, v, x, y
-					l.DisputeRecover(ctx, round, recoveryData.V, recoveryData.X, recoveryData.Y)
+				for _, recoveryData := range results.RecoveryData {
+					if recoveryData.OmegaRecov.Cmp(omega) != 0 && !disputeInitiated {
+						ctx := context.Background()
+						l.DisputeRecover(ctx, round, recoveryData.V, recoveryData.X, recoveryData.Y)
+						disputeInitiated = true
+					}
 				}
 
-				fmt.Printf("Processing disputeable round: %s\n", roundStr)
+				if disputeInitiated {
+					fmt.Printf("Processing disputeable round: %s\n", roundStr)
+					break
+				}
+			}
+
+			if !disputeInitiated {
+				fmt.Printf("No disputes initiated for round: %s\n", roundStr)
 			}
 		}
 	}
