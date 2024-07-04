@@ -295,19 +295,17 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 		var leaderAddress common.Address
 		var recoverData RecoveryResult
 		recoverData, loaded, err := loadRecoveryDataFromFile(item.Round)
-		if err != nil || !loaded {
+		if err != nil || !loaded && validCommitCount >= 2 {
 			recoverData, err = l.BeforeRecoverPhase(item.Round)
 			if err != nil {
 				log.Printf("Error processing BeforeRecoverPhase for round %s: %v", item.Round, err)
 				continue
 			}
 
-			if validCommitCount >= 2 {
-				err = saveRecoveryDataToFile(recoverData, item.Round)
-				if err != nil {
-					log.Printf("Failed to save recovery data to file for round %s: %v", item.Round, err)
-					continue
-				}
+			err = saveRecoveryDataToFile(recoverData, item.Round)
+			if err != nil {
+				log.Printf("Failed to save recovery data to file for round %s: %v", item.Round, err)
+				continue
 			}
 		}
 
