@@ -533,6 +533,8 @@ func (l *PoFClient) ProcessRoundResults() error {
 		l.OperatorDeposit(ctx)
 	}
 
+	time.NewTicker(5 * time.Second)
+
 	results, err := l.GetRandomWordRequested()
 	if err != nil {
 		log.Printf("Error fetching round results: %v", err)
@@ -563,8 +565,6 @@ func (l *PoFClient) ProcessRoundResults() error {
 
 					fmt.Printf("Processing recoverable round: %s\n", roundStr)
 					processedRounds[roundStr] = true
-
-					time.NewTicker(5 * time.Second)
 					break
 				}
 			}
