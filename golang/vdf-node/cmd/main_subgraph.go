@@ -22,7 +22,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	ticker := time.NewTicker(15 * time.Second)
+	ticker := time.NewTicker(5 * time.Second)
 	err = client.ProcessRoundResults()
 	if err != nil {
 		log.Printf("Initial processing of round results failed: %v", err)
