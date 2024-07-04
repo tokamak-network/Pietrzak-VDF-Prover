@@ -318,7 +318,7 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 
 		recoverDataMap := make(map[string]RecoveryResult)
 
-		if validCommitCount >= 2 && !isRecovered {
+		if validCommitCount >= 2 {
 			recoverData, err = l.BeforeRecoverPhase(item.Round)
 			if err != nil {
 				log.Printf("Error processing BeforeRecoverPhase for round %s: %v", item.Round, err)
