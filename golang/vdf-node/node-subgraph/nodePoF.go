@@ -294,27 +294,27 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 		var isMyAddressLeader bool
 		var leaderAddress common.Address
 		var recoverData RecoveryResult
-		if validCommitCount >= 2 {
-			recoverData, loaded, err := loadRecoveryDataFromFile(item.Round)
-			if err != nil || !loaded {
-				recoverData, err = l.BeforeRecoverPhase(item.Round)
-				if err != nil {
-					log.Printf("Error processing BeforeRecoverPhase for round %s: %v", item.Round, err)
-					continue
-				}
+		recoverData, loaded, err := loadRecoveryDataFromFile(item.Round)
+		if err != nil || !loaded {
+			recoverData, err = l.BeforeRecoverPhase(item.Round)
+			if err != nil {
+				log.Printf("Error processing BeforeRecoverPhase for round %s: %v", item.Round, err)
+				continue
+			}
 
+			if validCommitCount >= 2 {
 				err = saveRecoveryDataToFile(recoverData, item.Round)
 				if err != nil {
 					log.Printf("Failed to save recovery data to file for round %s: %v", item.Round, err)
 					continue
 				}
 			}
-
-			results.RecoveryData = append(results.RecoveryData, recoverData)
-			isMyAddressLeader, leaderAddress, _ = FindOffChainLeaderAtRound(item.Round, recoverData.OmegaRecov)
 		}
 
-		var isPreviousRoundRecovered bool = true
+		results.RecoveryData = append(results.RecoveryData, recoverData)
+		isMyAddressLeader, leaderAddress, _ = FindOffChainLeaderAtRound(item.Round, recoverData.OmegaRecov)
+
+		var isPreviousRoundRecovered bool
 		previousRoundInt, err := strconv.Atoi(item.Round)
 		if err != nil {
 			log.Printf("Error converting round to int: %v", err)
@@ -322,13 +322,15 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 		}
 
 		previousRound := strconv.Itoa(previousRoundInt - 1)
+
 		previousRoundData, err := GetRecoveredData(previousRound)
 		if err != nil {
 			log.Printf("Error retrieving recovered data for previous round %s: %v", previousRound, err)
 		} else {
+			isPreviousRoundRecovered = false
 			for _, data := range previousRoundData {
-				if !data.IsRecovered {
-					isPreviousRoundRecovered = false
+				if data.IsRecovered {
+					isPreviousRoundRecovered = true
 					break
 				}
 			}
