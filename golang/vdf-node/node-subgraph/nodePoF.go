@@ -292,7 +292,6 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 
 		recoverData, _ := l.BeforeRecoverPhase(item.Round)
 		results.RecoveryData = []RecoveryResult{recoverData}
-		fmt.Println("results.RecoverData:", results.RecoveryData)
 
 		var isMyAddressLeader bool
 		var leaderAddress common.Address
