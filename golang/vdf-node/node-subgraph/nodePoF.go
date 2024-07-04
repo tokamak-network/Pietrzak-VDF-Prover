@@ -336,7 +336,7 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 			isMyAddressLeader, leaderAddress, _ = FindOffChainLeaderAtRound(item.Round, recoverData.OmegaRecov)
 			results.RecoveryData = append(results.RecoveryData, recoverData)
 		} else if validCommitCount >= 2 && isRecovered {
-			if config.WalletAddress == msgSender {
+			if strings.ToLower(config.WalletAddress) == msgSender {
 				isMyAddressLeader = true
 				leaderAddress = common.HexToAddress(msgSender)
 			} else {
