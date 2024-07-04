@@ -144,6 +144,13 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 		}{RoundInt: roundInt, Data: data})
 	}
 
+	filteredRounds := rounds[:0]
+	for _, round := range rounds {
+		if !round.Data.RoundInfo.IsFulfillExecuted {
+			filteredRounds = append(filteredRounds, round)
+		}
+	}
+
 	// Sort rounds by RoundInt
 	sort.Slice(rounds, func(i, j int) bool {
 		return rounds[i].RoundInt < rounds[j].RoundInt
@@ -158,6 +165,7 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 		RecoverDisputeableRounds:    []string{},
 		LeadershipDisputeableRounds: []string{},
 		CompleteRounds:              []string{},
+		RecoveryData:                []RecoveryResult{},
 	}
 
 	// Display the filtered rounds
@@ -278,8 +286,13 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 		}
 
 		recoverData, _ := l.BeforeRecoverPhase(item.Round)
-		OmegaRecov := recoverData.OmegaRecov
-		isMyAddressLeader, leaderAddress, _ := FindOffChainLeaderAtRound(item.Round, OmegaRecov)
+		results.RecoveryData = []RecoveryResult{recoverData}
+		fmt.Println("results.RecoverData:", results.RecoveryData)
+		return results, nil
+
+		var isMyAddressLeader bool
+		var leaderAddress common.Address
+		isMyAddressLeader, leaderAddress, _ = FindOffChainLeaderAtRound(item.Round, recoverData.OmegaRecov)
 
 		var isPreviousRoundRecovered bool
 		previousRoundInt, err := strconv.Atoi(item.Round)
@@ -558,23 +571,23 @@ func (l *PoFClient) ProcessRoundResults() error {
 	if len(results.RecoverableRounds) > 0 {
 		fmt.Println("Processing Recoverable Rounds...")
 		for _, roundStr := range results.RecoverableRounds {
-			isMyAddressLeader, _, _ := FindOffChainLeaderAtRound(roundStr, big.NewInt(0))
-			if isMyAddressLeader {
-				round := new(big.Int)
-				round, ok := round.SetString(roundStr, 10)
-				if !ok {
-					log.Printf("Failed to convert round string to big.Int: %s", roundStr)
-					continue
+			for _, recoveryData := range results.RecoveryData {
+				isMyAddressLeader, _, _ := FindOffChainLeaderAtRound(roundStr, recoveryData.OmegaRecov)
+				if isMyAddressLeader {
+					round := new(big.Int)
+					round, ok := round.SetString(roundStr, 10)
+					if !ok {
+						log.Printf("Failed to convert round string to big.Int: %s", roundStr)
+						continue
+					}
+
+					ctx := context.Background()
+					l.Recover(ctx, round, recoveryData.Y)
+
+					fmt.Printf("Processing recoverable round: %s\n", roundStr)
+				} else {
+					fmt.Printf("Not recoverable round: %s\n", roundStr)
 				}
-
-				recoverData, _ := l.BeforeRecoverPhase(roundStr)
-
-				ctx := context.Background()
-				l.Recover(ctx, round, recoverData.Y)
-
-				fmt.Printf("Processing recoverable round: %s\n", roundStr)
-			} else {
-				fmt.Printf("Not recoverable round: %s\n", roundStr)
 			}
 		}
 	}
@@ -598,7 +611,7 @@ func (l *PoFClient) ProcessRoundResults() error {
 
 	if len(results.FulfillableRounds) > 0 {
 		fmt.Println("Processing Fulfillable Rounds...")
-		for _, roundStr := range results.FulfillableRounds {
+		for i, roundStr := range results.FulfillableRounds {
 			round := new(big.Int)
 			round, ok := round.SetString(roundStr, 10)
 			if !ok {
@@ -606,12 +619,17 @@ func (l *PoFClient) ProcessRoundResults() error {
 				continue
 			}
 
-			isMyAddressLeader, _, _ := FindOffChainLeaderAtRound(roundStr, big.NewInt(0))
-			if isMyAddressLeader {
-				ctx := context.Background()
-				l.FulfillRandomness(ctx, round)
+			// Check if the index is within bounds
+			if i < len(results.RecoveryData) {
+				isMyAddressLeader, _, _ := FindOffChainLeaderAtRound(roundStr, results.RecoveryData[i].OmegaRecov)
+				if isMyAddressLeader {
+					ctx := context.Background()
+					l.FulfillRandomness(ctx, round)
+				} else {
+					fmt.Printf("Not fulfillable round: %s\n", round)
+				}
 			} else {
-				fmt.Printf("Not fulfillable round: %s\n", round)
+				log.Printf("No recovery data available for round: %s", roundStr)
 			}
 		}
 	}
@@ -664,16 +682,16 @@ func (l *PoFClient) ProcessRoundResults() error {
 				fmt.Printf("Recovered Data - MsgSender: %s, Omega: %s\n", msgSender.Hex(), omega.String())
 			}
 
-			recoverData, _ := l.BeforeRecoverPhase(roundStr)
+			for _, recoveryData := range results.RecoveryData {
+				if recoveryData.OmegaRecov.Cmp(omega) != 0 {
+					ctx := context.Background()
 
-			if recoverData.OmegaRecov != omega {
-				ctx := context.Background()
+					// round, v, x, y
+					l.DisputeRecover(ctx, round, recoveryData.V, recoveryData.X, recoveryData.Y)
+				}
 
-				// round, v, x, y
-				l.DisputeRecover(ctx, round, recoverData.V, recoverData.X, recoverData.Y)
+				fmt.Printf("Processing disputeable round: %s\n", roundStr)
 			}
-
-			fmt.Printf("Processing disputeable round: %s\n", roundStr)
 		}
 	}
 
@@ -701,7 +719,7 @@ func (l *PoFClient) ProcessRoundResults() error {
 				fmt.Printf("Recovered Data - MsgSender: %s", msgSender.Hex())
 			}
 
-			isMyAddressLeader, leaderAddress, _ := FindOffChainLeaderAtRound(roundStr, big.NewInt(0))
+			isMyAddressLeader, leaderAddress, _ := FindOffChainLeaderAtRound(roundStr, results.OmegaRecov)
 
 			if msgSender != leaderAddress {
 				ctx := context.Background()

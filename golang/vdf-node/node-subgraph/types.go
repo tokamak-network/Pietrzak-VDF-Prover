@@ -80,6 +80,7 @@ type RoundResults struct {
 	RecoverDisputeableRounds    []string
 	LeadershipDisputeableRounds []string
 	CompleteRounds              []string
+	RecoveryData                []RecoveryResult
 }
 
 type SetupValues struct {
