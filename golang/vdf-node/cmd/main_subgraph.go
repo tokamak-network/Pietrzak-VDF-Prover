@@ -22,13 +22,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 즉시 첫 번째 작업을 실행
+	ticker := time.NewTicker(15 * time.Second)
 	err = client.ProcessRoundResults()
 	if err != nil {
 		log.Printf("Initial processing of round results failed: %v", err)
 	}
 
-	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 
 	go func() {
