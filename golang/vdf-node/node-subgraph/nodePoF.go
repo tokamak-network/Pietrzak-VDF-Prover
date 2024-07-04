@@ -270,6 +270,19 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 			}
 		}
 
+		requestBlockTimestampStr := item.BlockTimestamp
+		requestBlockTimestampInt, err := strconv.ParseInt(requestBlockTimestampStr, 10, 64)
+		if err != nil {
+			log.Printf("Error converting block timestamp to int64: %v", err)
+			return nil, err
+		}
+		requestBlockTimestamp := time.Unix(requestBlockTimestampInt, 0)
+		//fmt.Println("item Round: ", item.Round, " requestBlockTimestampStr: ", requestBlockTimestampStr)
+		//fmt.Println("item Round: ", item.Round, " requestBlockTimestamp: ", requestBlockTimestamp)
+		//fmt.Println("myCommitBlockTimestamp: ", myCommitBlockTimestamp)
+
+		//requestBlockTimestampEndTime := requestBlockTimestamp.Add(4 * time.Minute)
+
 		// get committed data
 		getCommitData, err := GetCommitData(item.Round)
 		if err != nil {
@@ -318,33 +331,6 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 		//	isMyAddressLeader, leaderAddress, _ = FindOffChainLeaderAtRound(item.Round, recoverData.OmegaRecov)
 		//}
 
-		recoverDataMap := make(map[string]RecoveryResult)
-
-		if validCommitCount >= 2 && !isRecovered {
-			recoverData, err = l.BeforeRecoverPhase(item.Round)
-			if err != nil {
-				log.Printf("Error processing BeforeRecoverPhase for round %s: %v", item.Round, err)
-				continue
-			}
-
-			if recoverData.OmegaRecov == nil {
-				log.Printf("OmegaRecov is nil for round %s", item.Round)
-				continue
-			}
-
-			recoverDataMap[item.Round] = recoverData
-			isMyAddressLeader, leaderAddress, _ = FindOffChainLeaderAtRound(item.Round, recoverData.OmegaRecov)
-			results.RecoveryData = append(results.RecoveryData, recoverData)
-		} else if validCommitCount >= 2 && isRecovered {
-			if strings.ToLower(config.WalletAddress) == msgSender {
-				isMyAddressLeader = true
-				leaderAddress = common.HexToAddress(msgSender)
-			} else {
-				isMyAddressLeader = false
-				leaderAddress = common.HexToAddress(msgSender)
-			}
-		}
-
 		var isPreviousRoundRecovered bool
 		previousRoundInt, err := strconv.Atoi(item.Round)
 		if err != nil {
@@ -366,19 +352,6 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 				}
 			}
 		}
-
-		requestBlockTimestampStr := item.BlockTimestamp
-		requestBlockTimestampInt, err := strconv.ParseInt(requestBlockTimestampStr, 10, 64)
-		if err != nil {
-			log.Printf("Error converting block timestamp to int64: %v", err)
-			return nil, err
-		}
-		requestBlockTimestamp := time.Unix(requestBlockTimestampInt, 0)
-		//fmt.Println("item Round: ", item.Round, " requestBlockTimestampStr: ", requestBlockTimestampStr)
-		//fmt.Println("item Round: ", item.Round, " requestBlockTimestamp: ", requestBlockTimestamp)
-		//fmt.Println("myCommitBlockTimestamp: ", myCommitBlockTimestamp)
-
-		//requestBlockTimestampEndTime := requestBlockTimestamp.Add(4 * time.Minute)
 
 		if commitTimeStampStr == "" {
 			commitTimeStampStr = "0"
@@ -409,6 +382,33 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 				if reRequestExists {
 					roundStatus.Delete(roundStr + ":ReRequested")
 				}
+			}
+		}
+
+		recoverDataMap := make(map[string]RecoveryResult)
+
+		if validCommitCount >= 2 && !isRecovered {
+			recoverData, err = l.BeforeRecoverPhase(item.Round)
+			if err != nil {
+				log.Printf("Error processing BeforeRecoverPhase for round %s: %v", item.Round, err)
+				continue
+			}
+
+			if recoverData.OmegaRecov == nil {
+				log.Printf("OmegaRecov is nil for round %s", item.Round)
+				continue
+			}
+
+			recoverDataMap[item.Round] = recoverData
+			isMyAddressLeader, leaderAddress, _ = FindOffChainLeaderAtRound(item.Round, recoverData.OmegaRecov)
+			results.RecoveryData = append(results.RecoveryData, recoverData)
+		} else if validCommitCount >= 2 && isRecovered {
+			if strings.ToLower(config.WalletAddress) == msgSender {
+				isMyAddressLeader = true
+				leaderAddress = common.HexToAddress(msgSender)
+			} else {
+				isMyAddressLeader = false
+				leaderAddress = common.HexToAddress(msgSender)
 			}
 		}
 
