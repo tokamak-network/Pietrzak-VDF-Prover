@@ -294,9 +294,9 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 		var isMyAddressLeader bool
 		var leaderAddress common.Address
 		var recoverData RecoveryResult
-
+		var loaded bool
 		if validCommitCount >= 2 {
-			recoverData, loaded, err := loadRecoveryDataFromFile(item.Round)
+			recoverData, loaded, err = loadRecoveryDataFromFile(item.Round)
 			if !loaded {
 				recoverData, err = l.BeforeRecoverPhase(item.Round)
 				if err != nil {
@@ -312,8 +312,6 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 
 				results.RecoveryData = append(results.RecoveryData, recoverData)
 				isMyAddressLeader, leaderAddress, _ = FindOffChainLeaderAtRound(item.Round, recoverData.OmegaRecov)
-				fmt.Println("isMyAddressLeader1: ", isMyAddressLeader)
-				fmt.Println("leaderAddress1: ", leaderAddress)
 			} else {
 				results.RecoveryData = append(results.RecoveryData, recoverData)
 				isMyAddressLeader, leaderAddress, _ = FindOffChainLeaderAtRound(item.Round, recoverData.OmegaRecov)
@@ -517,7 +515,13 @@ func (l *PoFClient) ProcessRoundResults() error {
 
 	if len(results.RecoverableRounds) > 0 {
 		fmt.Println("Processing Recoverable Rounds...")
+		processedRounds := make(map[string]bool)
+
 		for _, roundStr := range results.RecoverableRounds {
+			if processedRounds[roundStr] {
+				continue
+			}
+
 			for _, recoveryData := range results.RecoveryData {
 				isMyAddressLeader, _, _ := FindOffChainLeaderAtRound(roundStr, recoveryData.OmegaRecov)
 				if isMyAddressLeader {
@@ -532,9 +536,13 @@ func (l *PoFClient) ProcessRoundResults() error {
 					l.Recover(ctx, round, recoveryData.Y)
 
 					fmt.Printf("Processing recoverable round: %s\n", roundStr)
-				} else {
-					fmt.Printf("Not recoverable round: %s\n", roundStr)
+					processedRounds[roundStr] = true
+					break
 				}
+			}
+
+			if !processedRounds[roundStr] {
+				fmt.Printf("Not recoverable round: %s\n", roundStr)
 			}
 		}
 	}
