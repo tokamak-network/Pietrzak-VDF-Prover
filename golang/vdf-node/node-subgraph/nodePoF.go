@@ -29,6 +29,7 @@ import (
 )
 
 var roundStatus sync.Map
+var processedRounds = make(map[string]RecoveryResult)
 
 func loadContractABI(filename string) (abi.ABI, error) {
 	fileContent, err := ioutil.ReadFile(filename)
@@ -180,6 +181,14 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 
 	for _, round := range filteredRounds {
 		item := round.Data
+
+		var recoverData RecoveryResult
+		var found bool
+		if recoverData, found = processedRounds[item.Round]; !found {
+			recoverData, _ = l.BeforeRecoverPhase(item.Round)
+			processedRounds[item.Round] = recoverData
+		}
+
 		reqOne := graphql.NewRequest(`
 		query MyQuery($round: String!, $msgSender: String!) {
 		  commitCs(where: {round: $round, msgSender: $msgSender}) {
@@ -289,9 +298,6 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 				break
 			}
 		}
-
-		recoverData, _ := l.BeforeRecoverPhase(item.Round)
-		results.RecoveryData = []RecoveryResult{recoverData}
 
 		var isMyAddressLeader bool
 		var leaderAddress common.Address
