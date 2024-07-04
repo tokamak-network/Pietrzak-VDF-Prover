@@ -697,7 +697,7 @@ func (l *PoFClient) ProcessRoundResults() error {
 
 	if len(results.LeadershipDisputeableRounds) > 0 {
 		fmt.Println("Processing Leadership Disputeable Rounds...")
-		for _, roundStr := range results.LeadershipDisputeableRounds {
+		for i, roundStr := range results.LeadershipDisputeableRounds {
 			recoveredData, err := GetRecoveredData(roundStr)
 			if err != nil {
 				log.Printf("Error retrieving recovered data for round %s: %v", roundStr, err)
@@ -715,21 +715,24 @@ func (l *PoFClient) ProcessRoundResults() error {
 
 			for _, data := range recoveredData {
 				msgSender = common.HexToAddress(data.MsgSender)
-
-				fmt.Printf("Recovered Data - MsgSender: %s", msgSender.Hex())
+				fmt.Printf("Recovered Data - MsgSender: %s\n", msgSender.Hex())
 			}
 
-			isMyAddressLeader, leaderAddress, _ := FindOffChainLeaderAtRound(roundStr, results.OmegaRecov)
+			if i < len(results.RecoveryData) {
+				isMyAddressLeader, leaderAddress, _ := FindOffChainLeaderAtRound(roundStr, results.RecoveryData[i].OmegaRecov)
 
-			if msgSender != leaderAddress {
-				ctx := context.Background()
-				if isMyAddressLeader {
-					l.DisputeLeadershipAtRound(ctx, round)
-					fmt.Printf("MsgSender %s is not the leader for round %s\n", msgSender.Hex(), roundStr)
+				if msgSender != leaderAddress {
+					ctx := context.Background()
+					if isMyAddressLeader {
+						l.DisputeLeadershipAtRound(ctx, round)
+						fmt.Printf("MsgSender %s is not the leader for round %s\n", msgSender.Hex(), roundStr)
+					}
 				}
-			}
 
-			fmt.Printf("Processing disputeable round: %s\n", roundStr)
+				fmt.Printf("Processing disputeable round: %s\n", roundStr)
+			} else {
+				log.Printf("No recovery data available for round: %s", roundStr)
+			}
 		}
 	}
 
