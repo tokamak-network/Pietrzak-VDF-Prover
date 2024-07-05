@@ -533,8 +533,6 @@ func (l *PoFClient) ProcessRoundResults() error {
 		l.OperatorDeposit(ctx)
 	}
 
-	time.NewTicker(5 * time.Second)
-
 	results, err := l.GetRandomWordRequested()
 	if err != nil {
 		log.Printf("Error fetching round results: %v", err)
@@ -771,6 +769,8 @@ func FindOffChainLeaderAtRound(round string, OmegaRecov *big.Int) (bool, common.
 		color.New(color.FgHiRed, color.Bold).Printf("%s😢 I am not the leader.\n", roundPrefix)
 		fmt.Println("---------------------------------------------------------------------------")
 	}
+
+	time.Sleep(15 * time.Second)
 
 	return isMyAddressLeader, leaderAddress, nil
 }
