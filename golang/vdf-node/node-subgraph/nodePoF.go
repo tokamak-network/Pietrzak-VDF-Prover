@@ -231,7 +231,7 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 		var recoverPhaseEndTime time.Time
 		var isRecovered bool
 		var omega string
-		//var msgSender string
+		var msgSender string
 
 		if err != nil {
 			log.Printf("Error retrieving recovered data for round %s: %v", item.Round, err)
@@ -246,7 +246,7 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 
 			isRecovered = data.IsRecovered
 			omega = data.Omega
-			//msgSender = data.MsgSender
+			msgSender = data.MsgSender
 			blockTime := time.Unix(blockTimestamp, 0)
 			recoverPhaseEndTime = blockTime.Add(DisputeDuration * time.Second)
 		}
@@ -394,21 +394,33 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 		var mutex sync.Mutex
 		go func(round string) {
 			var err error
-			recoverData, err = l.BeforeRecoverPhase(round)
-			if err != nil {
-				log.Printf("Error processing BeforeRecoverPhase for round %s: %v", round, err)
-				return
-			}
-			if recoverData.OmegaRecov == nil {
-				log.Printf("OmegaRecov is nil for round %s", round)
-				return
-			}
+			if validCommitCount >= 2 && !isRecovered {
+				recoverData, err = l.BeforeRecoverPhase(round)
+				if err != nil {
+					log.Printf("Error processing BeforeRecoverPhase for round %s: %v", round, err)
+					return
+				}
+				if recoverData.OmegaRecov == nil {
+					log.Printf("OmegaRecov is nil for round %s", round)
+					return
+				}
 
-			mutex.Lock()
-			defer mutex.Unlock()
-			recoverDataMap[round] = recoverData
-			isMyAddressLeader, leaderAddress, _ = FindOffChainLeaderAtRound(round, recoverData.OmegaRecov)
-			results.RecoveryData = append(results.RecoveryData, recoverData)
+				mutex.Lock()
+				recoverDataMap[round] = recoverData
+				isMyAddressLeader, leaderAddress, _ = FindOffChainLeaderAtRound(round, recoverData.OmegaRecov)
+				results.RecoveryData = append(results.RecoveryData, recoverData)
+				mutex.Unlock()
+			} else if validCommitCount >= 2 && isRecovered {
+				mutex.Lock()
+				if strings.ToLower(config.WalletAddress) == msgSender {
+					isMyAddressLeader = true
+					leaderAddress = common.HexToAddress(msgSender)
+				} else {
+					isMyAddressLeader = false
+					leaderAddress = common.HexToAddress(msgSender)
+				}
+				mutex.Unlock()
+			}
 		}(item.Round)
 
 		// Recover
@@ -735,7 +747,7 @@ func FindOffChainLeaderAtRound(round string, OmegaRecov *big.Int) (bool, common.
 		return false, common.Address{}, err
 	}
 
-	//roundPrefix := fmt.Sprintf("Round %s - ", round) // Creating a prefix string
+	roundPrefix := fmt.Sprintf("Round %s - ", round) // Creating a prefix string
 
 	var minHash *big.Int
 	var leaderAddress common.Address
@@ -759,17 +771,17 @@ func FindOffChainLeaderAtRound(round string, OmegaRecov *big.Int) (bool, common.
 	}
 
 	isMyAddressLeader := myHash != nil && myHash.Cmp(minHash) == 0 && mySender == leaderAddress
-	//if isMyAddressLeader {
-	//	fmt.Println("---------------------------------------------------------------------------")
-	//	color.New(color.FgHiGreen, color.Bold).Printf("%sMy sender's address has the min hash\n", roundPrefix)
-	//	color.New(color.FgHiGreen, color.Bold).Printf("%s👑 I am the leader\n", roundPrefix)
-	//	fmt.Println("---------------------------------------------------------------------------")
-	//} else {
-	//	fmt.Println("---------------------------------------------------------------------------")
-	//	color.New(color.FgHiRed, color.Bold).Printf("%sMy sender's address does not have the min hash.\n", roundPrefix)
-	//	color.New(color.FgHiRed, color.Bold).Printf("%s😢 I am not the leader.\n", roundPrefix)
-	//	fmt.Println("---------------------------------------------------------------------------")
-	//}
+	if isMyAddressLeader {
+		fmt.Println("---------------------------------------------------------------------------")
+		color.New(color.FgHiGreen, color.Bold).Printf("%sMy sender's address has the min hash\n", roundPrefix)
+		color.New(color.FgHiGreen, color.Bold).Printf("%s👑 I am the leader\n", roundPrefix)
+		fmt.Println("---------------------------------------------------------------------------")
+	} else {
+		fmt.Println("---------------------------------------------------------------------------")
+		color.New(color.FgHiRed, color.Bold).Printf("%sMy sender's address does not have the min hash.\n", roundPrefix)
+		color.New(color.FgHiRed, color.Bold).Printf("%s😢 I am not the leader.\n", roundPrefix)
+		fmt.Println("---------------------------------------------------------------------------")
+	}
 
 	return isMyAddressLeader, leaderAddress, nil
 }
