@@ -306,9 +306,9 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 			}
 		}
 
-		//var isMyAddressLeader bool
-		//var leaderAddress common.Address
-		//var recoverData RecoveryResult
+		var isMyAddressLeader bool
+		var leaderAddress common.Address
+		var recoverData RecoveryResult
 		//var loaded bool
 
 		//if validCommitCount > 1 {
@@ -387,41 +387,30 @@ func (l *PoFClient) GetRandomWordRequested() (*RoundResults, error) {
 
 		recoverDataMap := make(map[string]RecoveryResult)
 
-		var isMyAddressLeader bool
-		var leaderAddress common.Address
-		var recoverData RecoveryResult
-
-		var mutex sync.Mutex
-		go func(round string) {
-			var err error
-			if validCommitCount >= 2 && !isRecovered {
-				recoverData, err = l.BeforeRecoverPhase(round)
-				if err != nil {
-					log.Printf("Error processing BeforeRecoverPhase for round %s: %v", round, err)
-					return
-				}
-				if recoverData.OmegaRecov == nil {
-					log.Printf("OmegaRecov is nil for round %s", round)
-					return
-				}
-
-				mutex.Lock()
-				recoverDataMap[round] = recoverData
-				isMyAddressLeader, leaderAddress, _ = FindOffChainLeaderAtRound(round, recoverData.OmegaRecov)
-				results.RecoveryData = append(results.RecoveryData, recoverData)
-				mutex.Unlock()
-			} else if validCommitCount >= 2 && isRecovered {
-				mutex.Lock()
-				if strings.ToLower(config.WalletAddress) == msgSender {
-					isMyAddressLeader = true
-					leaderAddress = common.HexToAddress(msgSender)
-				} else {
-					isMyAddressLeader = false
-					leaderAddress = common.HexToAddress(msgSender)
-				}
-				mutex.Unlock()
+		if validCommitCount >= 2 && !isRecovered {
+			recoverData, err = l.BeforeRecoverPhase(item.Round)
+			if err != nil {
+				log.Printf("Error processing BeforeRecoverPhase for round %s: %v", item.Round, err)
+				continue
 			}
-		}(item.Round)
+
+			if recoverData.OmegaRecov == nil {
+				log.Printf("OmegaRecov is nil for round %s", item.Round)
+				continue
+			}
+
+			recoverDataMap[item.Round] = recoverData
+			isMyAddressLeader, leaderAddress, _ = FindOffChainLeaderAtRound(item.Round, recoverData.OmegaRecov)
+			results.RecoveryData = append(results.RecoveryData, recoverData)
+		} else if validCommitCount >= 2 && isRecovered {
+			if strings.ToLower(config.WalletAddress) == msgSender {
+				isMyAddressLeader = true
+				leaderAddress = common.HexToAddress(msgSender)
+			} else {
+				isMyAddressLeader = false
+				leaderAddress = common.HexToAddress(msgSender)
+			}
+		}
 
 		// Recover
 		if !isRecovered && isMyAddressLeader && isCommitSender && commitPhaseEndTime.Before(time.Now()) && !item.RoundInfo.IsRecovered && !item.RoundInfo.IsFulfillExecuted && validCommitCount > 1 {
