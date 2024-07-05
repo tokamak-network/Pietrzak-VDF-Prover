@@ -563,6 +563,8 @@ func (l *PoFClient) ProcessRoundResults() error {
 
 					fmt.Printf("Processing recoverable round: %s\n", roundStr)
 					processedRounds[roundStr] = true
+
+					time.Sleep(3 * time.Second)
 					break
 				}
 			}
