@@ -577,7 +577,13 @@ func (l *PoFClient) ProcessRoundResults() error {
 
 	if len(results.CommittableRounds) > 0 {
 		fmt.Println("Processing Committable Rounds...")
+		processedRounds := make(map[string]bool)
+
 		for _, roundStr := range results.CommittableRounds {
+			if processedRounds[roundStr] {
+				continue
+			}
+
 			round := new(big.Int)
 			round, ok := round.SetString(roundStr, 10)
 			if !ok {
@@ -589,6 +595,7 @@ func (l *PoFClient) ProcessRoundResults() error {
 			l.Commit(ctx, round)
 
 			fmt.Printf("Processing committable round: %s\n", roundStr)
+			processedRounds[roundStr] = true
 		}
 	}
 
