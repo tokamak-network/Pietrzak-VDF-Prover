@@ -768,9 +768,8 @@ func FindOffChainLeaderAtRound(round string, OmegaRecov *big.Int) (bool, common.
 		color.New(color.FgHiRed, color.Bold).Printf("%sMy sender's address does not have the min hash.\n", roundPrefix)
 		color.New(color.FgHiRed, color.Bold).Printf("%s😢 I am not the leader.\n", roundPrefix)
 		fmt.Println("---------------------------------------------------------------------------")
+		time.Sleep(10 * time.Second)
 	}
-
-	time.Sleep(15 * time.Second)
 
 	return isMyAddressLeader, leaderAddress, nil
 }
